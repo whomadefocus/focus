@@ -18,6 +18,9 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.android.material.tabs.TabLayout;
 
 import java.text.SimpleDateFormat;
@@ -55,7 +58,7 @@ final class NotesTasksPage extends LinearLayout implements MainActivity.Refresh 
         TextView add = UI.symbolButton(a, "add", UI.col(a, R.color.text), 48, 24);
         add.setContentDescription("Add task");
         add.setOnClickListener(v -> editTask(null));
-        addView(UI.topBar(a, "Notes & tasks", v -> a.back(), add),
+        addView(UI.topBar(a, "Tasks", v -> a.back(), add),
                 new LinearLayout.LayoutParams(UI.M, UI.W));
         addView(dateHeader(), new LinearLayout.LayoutParams(UI.M, UI.dp(56)));
 
@@ -170,19 +173,20 @@ final class NotesTasksPage extends LinearLayout implements MainActivity.Refresh 
         TextView title = (TextView) holder[1];
         TextView meta = (TextView) holder[2];
         checkbox.setOnCheckedChangeListener(null);
-        checkbox.setChecked(task.done);
+        boolean checkedForDay = TaskStore.doneOn(task, day);
+        checkbox.setChecked(checkedForDay);
         title.setText(task.title);
-        title.setPaintFlags(task.done ? title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG
+        title.setPaintFlags(checkedForDay ? title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG
                 : title.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
-        String detail = filter == FILTER_TODAY ? "" : formatDay(task.day);
+        String detail = task.repeatDays != 0 ? TaskStore.repeatLabel(task.repeatDays)
+            : filter == FILTER_TODAY ? "" : formatDay(task.day);
         if (task.remindAt > 0) {
             if (!detail.isEmpty()) detail += " · ";
             detail += "Reminder " + android.text.format.DateFormat.getTimeFormat(a).format(new Date(task.remindAt));
         }
         meta.setText(detail);
         checkbox.setOnCheckedChangeListener((button, checked) -> {
-            task.done = checked;
-            TaskStore.update(a, task);
+            TaskStore.setDoneForDay(a, task, day, checked);
             renderTasks();
         });
         View.OnClickListener edit = v -> editTask(task);
@@ -209,24 +213,68 @@ final class NotesTasksPage extends LinearLayout implements MainActivity.Refresh 
         final EditText title = new EditText(a);
         title.setSingleLine(true);
         title.setHint("Task name");
+        title.setTextColor(UI.col(a, R.color.text));
+        title.setHintTextColor(UI.col(a, R.color.text2));
         if (existing != null) title.setText(existing.title);
         final long[] remindAt = {existing == null ? 0 : existing.remindAt};
         final TextView reminder = UI.tv(a, reminderLabel(remindAt[0]), 14, UI.col(a, R.color.primary), true);
         reminder.setPadding(0, UI.dp(12), 0, UI.dp(8));
         reminder.setOnClickListener(v -> pickReminder(remindAt, reminder));
+        int initialRepeat = existing == null ? 0 : existing.repeatDays;
+        MaterialButtonToggleGroup weekdays = new MaterialButtonToggleGroup(a);
+        weekdays.setSingleSelection(false);
+        weekdays.setSelectionRequired(false);
+        String[] dayNames = {"M", "T", "W", "T", "F", "S", "S"};
+        int[] dayBits = {2, 3, 4, 5, 6, 7, 1};
+        for (int i = 0; i < dayNames.length; i++) {
+            MaterialButton dayButton = new MaterialButton(a, null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle);
+            dayButton.setId(View.generateViewId());
+            dayButton.setText(dayNames[i]);
+            dayButton.setTag(Integer.valueOf(dayBits[i]));
+            dayButton.setCheckable(true);
+            dayButton.setMinWidth(UI.dp(38));
+            dayButton.setInsetTop(0);
+            dayButton.setInsetBottom(0);
+            weekdays.addView(dayButton, new LinearLayout.LayoutParams(0, UI.dp(40), 1f));
+            if ((initialRepeat & (1 << (dayBits[i] - 1))) != 0) weekdays.check(dayButton.getId());
+        }
+        TextView repeatLabel = UI.tv(a, "Repeat on", 13, UI.col(a, R.color.text2), true);
+        LinearLayout repeatSection = new LinearLayout(a);
+        repeatSection.setOrientation(VERTICAL);
+        repeatSection.addView(repeatLabel);
+        repeatSection.addView(weekdays, new LinearLayout.LayoutParams(UI.M, UI.W));
+        final SwitchMaterial ring = new SwitchMaterial(a);
+        ring.setText("Ring and vibrate");
+        ring.setTextColor(UI.col(a, R.color.text));
+        ring.setTextColor(UI.col(a, R.color.text));
+        ring.setChecked(existing != null && existing.ringAlarm);
+        ring.setOnCheckedChangeListener((button, checked) -> {
+            if (checked && remindAt[0] == 0) pickReminder(remindAt, reminder);
+        });
         LinearLayout body = new LinearLayout(a);
         body.setOrientation(VERTICAL);
         body.setPadding(UI.dp(20), 0, UI.dp(20), 0);
         body.addView(title);
         body.addView(reminder);
+        body.addView(repeatSection);
+        body.addView(ring);
         new android.app.AlertDialog.Builder(a).setTitle(existing == null ? "New task" : "Edit task").setView(body)
                 .setNegativeButton("Cancel", null).setPositiveButton(existing == null ? "Add" : "Save", (dialog, which) -> {
                     String value = title.getText().toString().trim();
                     if (value.isEmpty()) { a.toast("Enter a task name"); return; }
-                    if (existing == null) TaskStore.add(a, day, value, remindAt[0]);
+                    int repeatDays = 0;
+                    List<Integer> checkedDays = weekdays.getCheckedButtonIds();
+                    for (int i = 0; i < weekdays.getChildCount(); i++) {
+                        View child = weekdays.getChildAt(i);
+                        if (checkedDays.contains(child.getId())) repeatDays |= 1 << (((Integer) child.getTag()).intValue() - 1);
+                    }
+                    if (existing == null) TaskStore.add(a, day, value, remindAt[0], repeatDays, ring.isChecked());
                     else {
                         existing.title = value;
                         existing.remindAt = remindAt[0];
+                        existing.repeatDays = repeatDays;
+                        existing.ringAlarm = ring.isChecked();
                         TaskStore.update(a, existing);
                     }
                     renderTasks();
@@ -336,11 +384,25 @@ final class NotesTasksPage extends LinearLayout implements MainActivity.Refresh 
         int todayTotal = 0, todayDone = 0;
         long now = System.currentTimeMillis();
         for (TaskStore.Task task : all) {
-            if (task.day.equals(Notes.today())) { todayTotal++; if (task.done) todayDone++; }
-            if (filter == FILTER_TODAY && task.day.equals(day)) visible.add(task);
-            else if (filter == FILTER_UPCOMING && !task.done
-                    && (task.day.compareTo(Notes.today()) > 0 || task.remindAt > now)) visible.add(task);
-            else if (filter == FILTER_COMPLETED && task.done) visible.add(task);
+            if (TaskStore.appliesOn(task, Notes.today())) {
+                todayTotal++;
+                if (TaskStore.doneOn(task, Notes.today())) todayDone++;
+            }
+            if (filter == FILTER_TODAY && TaskStore.appliesOn(task, day)) visible.add(task);
+            else if (filter == FILTER_UPCOMING && !TaskStore.doneOn(task, Notes.today())
+                    && (task.day.compareTo(Notes.today()) > 0 || task.remindAt > now || task.repeatDays != 0)) visible.add(task);
+            else if (filter == FILTER_COMPLETED) {
+                if (task.repeatDays == 0 && task.done) visible.add(task);
+                else for (String completedDay : task.completedDays) {
+                    TaskStore.Task occurrence = new TaskStore.Task();
+                    occurrence.id = task.id;
+                    occurrence.day = completedDay;
+                    occurrence.title = task.title;
+                    occurrence.done = true;
+                    occurrence.remindAt = task.remindAt;
+                    visible.add(occurrence);
+                }
+            }
         }
         Collections.sort(visible, (left, right) -> {
             if (left.done != right.done) return left.done ? 1 : -1;

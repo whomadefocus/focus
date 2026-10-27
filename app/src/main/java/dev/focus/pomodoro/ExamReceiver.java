@@ -18,15 +18,15 @@ public final class ExamReceiver extends BroadcastReceiver {
         static void finish(Context context) {
         android.content.SharedPreferences prefs = context.getSharedPreferences("exam", Context.MODE_PRIVATE);
         if (!prefs.getBoolean("running", false) || prefs.getLong("end", 0) > System.currentTimeMillis()) return;
-        prefs.edit().putBoolean("running", false).putLong("remaining", 0).apply();
+        prefs.edit().putBoolean("running", false).putBoolean("active", false).putLong("remaining", 0).apply();
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(
-                CHANNEL, "Exam timer", NotificationManager.IMPORTANCE_HIGH));
+                CHANNEL, "Timer", NotificationManager.IMPORTANCE_HIGH));
         Notification.Builder notification = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(context, CHANNEL) : new Notification.Builder(context);
-        notification.setSmallIcon(R.drawable.ic_stat).setContentTitle("Exam timer finished")
-                .setContentText("Your exam time is up.").setAutoCancel(true);
+        notification.setSmallIcon(R.drawable.ic_stat).setContentTitle("Timer finished")
+                .setContentText("Your timer is complete.").setAutoCancel(true);
         manager.notify(303, notification.build());
     }
 }

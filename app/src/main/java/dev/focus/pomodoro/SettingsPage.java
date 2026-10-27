@@ -55,11 +55,23 @@ final class SettingsPage extends LinearLayout {
         content.addView(auto);
         content.addView(pull);
 
-        section(content, "PDF READER");
+        section(content, "PDF READING");
         final SwitchMaterial keepScreen = toggle("Keep screen on while reading", pdfKeepScreen(a));
         content.addView(keepScreen);
         keepScreen.setOnCheckedChangeListener((button, checked) -> a.getSharedPreferences("reader", Context.MODE_PRIVATE)
                 .edit().putBoolean("keep_screen", checked).apply());
+
+        section(content, "FLOATING CONTROLS");
+        final SwitchMaterial floating = toggle("Show Pomodoro over other apps", OverlayService.enabled(a));
+        content.addView(floating);
+        floating.setOnCheckedChangeListener((button, enabled) -> {
+            if (enabled && !Pomo.canOverlay()) {
+                floating.setChecked(false);
+                a.ensureOverlay();
+                return;
+            }
+            OverlayService.setEnabled(a, enabled);
+        });
 
         section(content, "APP MANAGEMENT");
         TextView screenTime = UI.tv(a, "Screen time, app limits and launcher", 16, UI.col(a, R.color.primary), true);
@@ -103,6 +115,8 @@ final class SettingsPage extends LinearLayout {
         EditText edit = new EditText(a);
         edit.setInputType(InputType.TYPE_CLASS_NUMBER);
         edit.setText(String.valueOf(value));
+        edit.setTextColor(UI.col(a, R.color.text));
+        edit.setHintTextColor(UI.col(a, R.color.text2));
         edit.setGravity(Gravity.END);
         edit.setMinWidth(UI.dp(72));
         edit.setSelectAllOnFocus(true);
@@ -123,6 +137,7 @@ final class SettingsPage extends LinearLayout {
         SwitchMaterial control = new SwitchMaterial(a);
         control.setText(title);
         control.setTextSize(16);
+        control.setTextColor(UI.col(a, R.color.text));
         control.setChecked(checked);
         control.setPadding(0, UI.dp(10), 0, UI.dp(10));
         return control;

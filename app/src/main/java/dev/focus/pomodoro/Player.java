@@ -21,14 +21,20 @@ import java.util.Random;
 
 /** Process-wide player: MediaPlayer for tracks, a looping generated AudioTrack for white noise. */
 final class Player {
+    static final int REPEAT_OFF = 0, REPEAT_ALL = 1, REPEAT_ONE = 2;
     static final class Track {
         final Uri uri;
         final String title, sub;
         final boolean noise;
         final long albumId;
+        final String artist, album;
 
-        Track(Uri u, String t, String s, boolean n) { this(u, t, s, n, -1); }
-        Track(Uri u, String t, String s, boolean n, long album) { uri = u; title = t; sub = s; noise = n; albumId = album; }
+        Track(Uri u, String t, String s, boolean n) { this(u, t, s, n, -1, "Unknown artist", "Unknown album"); }
+        Track(Uri u, String t, String s, boolean n, long album) { this(u, t, s, n, album, "Unknown artist", "Unknown album"); }
+        Track(Uri u, String t, String s, boolean n, long albumId, String artist, String album) {
+            uri = u; title = t; sub = s; noise = n; this.albumId = albumId;
+            this.artist = artist; this.album = album;
+        }
 
         String key() { return noise ? "noise" : String.valueOf(uri); }
 
@@ -43,6 +49,8 @@ final class Player {
     private static SharedPreferences sp;
     static Track cur;
     static boolean playing;
+    static boolean shuffle;
+    static int repeatMode = REPEAT_ALL;
     private static boolean prepared, resumeOnGain;
     private static MediaPlayer mp;
     private static AudioTrack noiseTrack;
@@ -69,6 +77,8 @@ final class Player {
         if (app != null) return;
         app = c.getApplicationContext();
         sp = app.getSharedPreferences("player", Context.MODE_PRIVATE);
+        shuffle = sp.getBoolean("shuffle", false);
+        repeatMode = Math.max(REPEAT_OFF, Math.min(REPEAT_ONE, sp.getInt("repeat", REPEAT_ALL)));
         String k = sp.getString("key", null);
         if ("noise".equals(k)) cur = NOISE;
         else if (k != null) cur = new Track(Uri.parse(k), sp.getString("title", "?"), sp.getString("sub", ""), false);
@@ -200,6 +210,10 @@ final class Player {
     private static void step(int dir) {
         int n = queue.size();
         if (n < 2) return;
+        if (shuffle) {
+            play(randomTrack());
+            return;
+        }
         int i = queue.indexOf(cur);
         if (i < 0) i = 0;
         i += dir;
@@ -210,11 +224,62 @@ final class Player {
 
     private static void advance() {
         int n = queue.size();
-        if (n < 2) { playing = false; changed(); return; }
+        if (repeatMode == REPEAT_ONE && cur != null) { play(cur); return; }
+        if (n < 2 || (repeatMode == REPEAT_OFF && queue.indexOf(cur) >= n - 1)) {
+            release();
+            playing = false;
+            changed();
+            return;
+        }
+        if (shuffle) {
+            play(randomTrack());
+            return;
+        }
         int i = queue.indexOf(cur);
         i = i < 0 ? 1 : i + 1;
         if (i >= n) i = 1;
         play(queue.get(i));
+    }
+
+    private static Track randomTrack() {
+        int first = queue.size() > 1 && queue.get(0) == NOISE ? 1 : 0;
+        int size = queue.size() - first;
+        if (size <= 1) return cur == null ? queue.get(first) : cur;
+        int index = first + new Random().nextInt(size);
+        if (queue.get(index).equals(cur)) index = first + (index - first + 1) % size;
+        return queue.get(index);
+    }
+
+    static void setShuffle(boolean enabled) {
+        shuffle = enabled;
+        sp.edit().putBoolean("shuffle", enabled).apply();
+        changed();
+    }
+
+    static void cycleRepeat() {
+        repeatMode = (repeatMode + 1) % 3;
+        sp.edit().putInt("repeat", repeatMode).apply();
+        changed();
+    }
+
+    static int duration() {
+        if (cur == null || cur.noise || mp == null || !prepared) return 0;
+        try { return mp.getDuration(); } catch (IllegalStateException e) { return 0; }
+    }
+
+    static int position() {
+        if (cur == null || cur.noise || mp == null || !prepared) return 0;
+        try { return mp.getCurrentPosition(); } catch (IllegalStateException e) { return 0; }
+    }
+
+    static void seek(int position) {
+        if (cur == null || cur.noise || mp == null || !prepared) return;
+        try {
+            mp.seekTo(Math.max(0, Math.min(duration(), position)));
+            changed();
+        } catch (IllegalStateException e) {
+            android.util.Log.w("Player", "Unable to seek current track", e);
+        }
     }
 
     static void changed() {
@@ -228,16 +293,19 @@ final class Player {
         if (scanCache != null) return new ArrayList<>(scanCache);
         ArrayList<Track> out = new ArrayList<>();
         String[] proj = {MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE,
-                MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID};
+            MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.ALBUM};
         try (Cursor q = c.getContentResolver().query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, proj,
                 MediaStore.Audio.Media.IS_MUSIC + "!=0", null, MediaStore.Audio.Media.TITLE + " COLLATE NOCASE")) {
             if (q != null) {
                 while (q.moveToNext()) {
                     String artist = q.getString(2);
                     if (artist == null || artist.equals("<unknown>")) artist = "Unknown artist";
+                        String album = q.getString(5);
+                        if (album == null || album.trim().isEmpty() || album.equals("<unknown>")) album = "Unknown album";
                     String sub = artist + " \u00B7 " + UI.mmss(q.getLong(3) - 999);
                     out.add(new Track(ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, q.getLong(0)),
-                            q.getString(1), sub, false, q.getLong(4)));
+                            q.getString(1), sub, false, q.getLong(4), artist, album));
                 }
             }
         } catch (Exception ignored) { }

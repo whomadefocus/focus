@@ -18,6 +18,7 @@ final class PdfLib {
         String uri, name;
         int page, count;
         long last;
+        boolean pinned;
     }
 
     private static SharedPreferences sp;
@@ -40,9 +41,11 @@ final class PdfLib {
                     d.page = o.optInt("p", 0);
                     d.count = o.optInt("c", 0);
                     d.last = o.optLong("t", 0);
+                    d.pinned = o.optBoolean("pin", false);
                     cache.add(d);
                 }
             } catch (Exception ignored) { }
+            sort();
         }
         return cache;
     }
@@ -51,7 +54,8 @@ final class PdfLib {
         try {
             JSONArray a = new JSONArray();
             for (Doc d : all()) {
-                a.put(new JSONObject().put("u", d.uri).put("n", d.name).put("p", d.page).put("c", d.count).put("t", d.last));
+                a.put(new JSONObject().put("u", d.uri).put("n", d.name).put("p", d.page).put("c", d.count)
+                    .put("t", d.last).put("pin", d.pinned));
             }
             sp.edit().putString("list", a.toString()).apply();
         } catch (Exception ignored) { }
@@ -68,15 +72,30 @@ final class PdfLib {
         d.uri = uri;
         d.name = name.replaceAll("(?i)\\.pdf$", "");
         all().add(d);
-        Collections.sort(all(), new Comparator<Doc>() {
-            @Override public int compare(Doc a, Doc b) { return a.name.toLowerCase(Locale.ROOT).compareTo(b.name.toLowerCase(Locale.ROOT)); }
-        });
+        sort();
         save();
     }
 
     static synchronized void remove(String uri) {
         Doc d = find(uri);
         if (d != null) { all().remove(d); save(); }
+    }
+
+    static synchronized void pin(String uri, boolean pinned) {
+        Doc doc = find(uri);
+        if (doc == null) return;
+        doc.pinned = pinned;
+        sort();
+        save();
+    }
+
+    private static void sort() {
+        Collections.sort(all(), new Comparator<Doc>() {
+            @Override public int compare(Doc left, Doc right) {
+                if (left.pinned != right.pinned) return left.pinned ? -1 : 1;
+                return left.name.toLowerCase(Locale.ROOT).compareTo(right.name.toLowerCase(Locale.ROOT));
+            }
+        });
     }
 
     static synchronized void progress(String uri, int page, int count) {

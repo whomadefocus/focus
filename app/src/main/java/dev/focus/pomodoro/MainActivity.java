@@ -24,7 +24,7 @@ import java.util.ArrayList;
 public class MainActivity extends Activity {
     interface Refresh { void refresh(); }
 
-    static final int HOME = 0, NOTES = 1, MUSIC = 2, PDFS = 3, SETTINGS = 4, APP_DRAWER = 5, SCREEN_TIME = 6;
+    static final int HOME = 0, TASKS = 1, MUSIC = 2, PDFS = 3, SETTINGS = 4, APP_DRAWER = 5, SCREEN_TIME = 6, APP_PICKER = 7, NOTES = 8;
     private static final int RQ_PDF = 11, RQ_DIR = 12, RQ_AUDIO = 21, RQ_NOTIF = 22;
     private static final int LOCK_FLAGS = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
             | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD;
@@ -68,11 +68,13 @@ public class MainActivity extends Activity {
         if (page != null) root.removeView(page);
         cur = id;
         switch (id) {
-            case NOTES: page = new NotesTasksPage(this); break;
-            case MUSIC: page = new MusicPage(this); break;
+            case TASKS: page = new NotesTasksPage(this); break;
+            case NOTES: page = new NotesLibraryPage(this); break;
+            case MUSIC: page = new MusicLibraryPage(this); break;
             case PDFS: page = new PdfPage(this); break;
             case SETTINGS: page = new SettingsPage(this); break;
             case APP_DRAWER: page = new AppDrawerPage(this); break;
+            case APP_PICKER: page = new AppDrawerPage(this, true); break;
             case SCREEN_TIME: page = new ScreenTimePage(this); break;
             default: page = new HomePage(this);
         }
@@ -92,6 +94,10 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (OverlayService.enabled(this)) {
+            if (Pomo.canOverlay()) OverlayService.setEnabled(this, true);
+            else OverlayService.setEnabled(this, false);
+        }
         if (page instanceof Refresh) ((Refresh) page).refresh();
     }
 

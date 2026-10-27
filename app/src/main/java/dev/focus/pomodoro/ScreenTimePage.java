@@ -157,6 +157,8 @@ final class ScreenTimePage extends LinearLayout implements MainActivity.Refresh 
     private void editLimit(final AppUse item) {
         final EditText input = new EditText(a);
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setTextColor(UI.col(a, R.color.text));
+        input.setHintTextColor(UI.col(a, R.color.text2));
         input.setHint("Minutes per day; 0 removes the limit");
         if (item.limit > 0) input.setText(String.valueOf(item.limit));
         new AlertDialog.Builder(a).setTitle("Daily limit · " + item.label).setView(input)

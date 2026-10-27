@@ -1,13 +1,12 @@
 package dev.focus.pomodoro;
 
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.provider.AlarmClock;
+import android.provider.CalendarContract;
 import android.text.format.DateFormat;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -22,6 +21,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.tabs.TabLayout;
 
 import java.text.SimpleDateFormat;
@@ -41,6 +42,8 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     private TimerView examTimerView;
     private ImageView examPlay;
     private EditText examMinutes;
+    private TextView examEnd;
+    private MaterialButtonToggleGroup examPresets;
     private int selectedTab = 0;
 
     private final Runnable onState = new Runnable() { @Override public void run() { update(); } };
@@ -79,9 +82,9 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         tabs.setBackgroundColor(surface);
         tabs.setSelectedTabIndicatorColor(primary);
         tabs.setTabTextColors(muted, primary);
-        tabs.addTab(tabs.newTab().setText("Clock & date"));
+        tabs.addTab(tabs.newTab().setText("Clock"));
         tabs.addTab(tabs.newTab().setText("Pomodoro"));
-        tabs.addTab(tabs.newTab().setText("Exam timer"));
+        tabs.addTab(tabs.newTab().setText("Timer"));
         tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
             @Override public void onTabSelected(TabLayout.Tab tab) { setTab(tab.getPosition()); }
             @Override public void onTabUnselected(TabLayout.Tab tab) { }
@@ -89,6 +92,8 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         });
         LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(UI.M, UI.W);
         tabLp.topMargin = UI.dp(12);
+        tabLp.leftMargin = -UI.dp(16);
+        tabLp.rightMargin = -UI.dp(16);
         col.addView(tabs, tabLp);
 
         datePanel = new LinearLayout(a);
@@ -96,8 +101,12 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         datePanel.setGravity(Gravity.CENTER);
         dateText = UI.tv(a, "", 17, muted, false);
         dateText.setGravity(Gravity.CENTER);
+        dateText.setContentDescription("Open calendar");
+        dateText.setOnClickListener(v -> openCalendar());
         clockText = UI.tv(a, "", 58, text, true);
         clockText.setGravity(Gravity.CENTER);
+        clockText.setContentDescription("Open clock");
+        clockText.setOnClickListener(v -> openClock());
         datePanel.addView(clockText, new LinearLayout.LayoutParams(UI.M, UI.W));
         datePanel.addView(dateText, new LinearLayout.LayoutParams(UI.M, UI.W));
         col.addView(datePanel, new LinearLayout.LayoutParams(UI.M, UI.dp(250)));
@@ -139,12 +148,13 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         shortcutsGrid = new GridLayout(a);
         shortcutsGrid.setColumnCount(3);
         shortcutsGrid.setAlignmentMode(GridLayout.ALIGN_BOUNDS);
-        addGridTile("description", "Notes", new Runnable() { @Override public void run() { a.show(MainActivity.NOTES); } });
+        addGridTile("checklist", "Tasks", new Runnable() { @Override public void run() { a.show(MainActivity.TASKS); } });
         addGridTile("music_note", "Music", new Runnable() { @Override public void run() { a.show(MainActivity.MUSIC); } });
         addGridTile("picture_as_pdf", "PDFs", new Runnable() { @Override public void run() { a.show(MainActivity.PDFS); } });
-        addGridTile("alarm", "Clock", new Runnable() { @Override public void run() { openSystemApp("android.intent.category.APP_ALARM", AlarmClock.ACTION_SHOW_ALARMS); } });
-        addGridTile("calculate", "Calculator", new Runnable() { @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALCULATOR, null); } });
-        addGridTile("calendar_month", "Calendar", new Runnable() { @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALENDAR, null); } });
+        addGridTile("description", "Notes", new Runnable() { @Override public void run() { a.show(MainActivity.NOTES); } });
+        addGridTile("alarm", "Clock", new Runnable() { @Override public void run() { openClock(); } });
+        addGridTile("calculate", "Calculator", new Runnable() { @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALCULATOR); } });
+        addGridTile("calendar_month", "Calendar", new Runnable() { @Override public void run() { openCalendar(); } });
         addGridTile("apps", "All apps", new Runnable() { @Override public void run() { a.show(MainActivity.APP_DRAWER); } });
         addGridTile("add", "Add shortcut", new Runnable() { @Override public void run() { chooseShortcut(); } });
         renderShortcuts();
@@ -152,7 +162,7 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         gridLp.topMargin = UI.dp(2);
         col.addView(shortcutsGrid, gridLp);
 
-        addSectionTitle(col, "Today's tasks", "edit_note", new Runnable() { @Override public void run() { a.show(MainActivity.NOTES); } });
+        addSectionTitle(col, "Today's tasks", "edit_note", new Runnable() { @Override public void run() { a.show(MainActivity.TASKS); } });
         todayTasks = new LinearLayout(a);
         todayTasks.setOrientation(LinearLayout.VERTICAL);
         todayTasks.setPadding(UI.dp(12), UI.dp(6), UI.dp(12), UI.dp(6));
@@ -164,7 +174,6 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         pdfCard.setOrientation(LinearLayout.VERTICAL);
         pdfCard.setPadding(UI.dp(16), UI.dp(12), UI.dp(16), UI.dp(12));
         pdfCard.setBackground(UI.ripple(UI.rect(surface, 12), false, 12));
-        pdfCard.setElevation(UI.dp(2));
         LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(UI.M, UI.W);
         plp.topMargin = UI.dp(28);
         col.addView(pdfCard, plp);
@@ -269,7 +278,7 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
             return;
         }
         int completed = 0;
-        for (TaskStore.Task task : tasks) if (task.done) completed++;
+        for (TaskStore.Task task : tasks) if (TaskStore.doneOn(task, Notes.today())) completed++;
         TextView progress = UI.tv(a, completed + " of " + tasks.size() + " completed", 12, UI.col(a, R.color.text2), false);
         progress.setPadding(UI.dp(4), UI.dp(4), UI.dp(4), UI.dp(6));
         todayTasks.addView(progress);
@@ -278,10 +287,9 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
             check.setText(task.title);
             check.setTextColor(UI.col(a, R.color.text));
             check.setTextSize(14);
-            check.setChecked(task.done);
+            check.setChecked(TaskStore.doneOn(task, Notes.today()));
             check.setOnCheckedChangeListener((button, checked) -> {
-                task.done = checked;
-                TaskStore.update(a, task);
+                TaskStore.setDoneForDay(a, task, Notes.today(), checked);
                 renderTodayTasks();
             });
             todayTasks.addView(check, new LinearLayout.LayoutParams(UI.M, UI.W));
@@ -291,13 +299,18 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     private LinearLayout buildExamPanel() {
         LinearLayout panel = new LinearLayout(a);
         panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(UI.dp(12), UI.dp(8), UI.dp(12), UI.dp(12));
+        panel.setBackground(UI.rect(UI.col(a, R.color.surface), 12));
+        TextView heading = UI.tv(a, "TIMER SESSION", 12, UI.col(a, R.color.primary), true);
+        heading.setGravity(Gravity.CENTER);
+        panel.addView(heading, new LinearLayout.LayoutParams(UI.M, UI.dp(28)));
         examTimerView = new TimerView(a);
         LinearLayout.LayoutParams timerLp = new LinearLayout.LayoutParams(UI.W, UI.W);
         timerLp.gravity = Gravity.CENTER_HORIZONTAL;
         panel.addView(examTimerView, timerLp);
         LinearLayout durationRow = new LinearLayout(a);
         durationRow.setGravity(Gravity.CENTER);
-        durationRow.addView(UI.tv(a, "Exam length", 14, UI.col(a, R.color.text2), false));
+        durationRow.addView(UI.tv(a, "Duration", 14, UI.col(a, R.color.text2), false));
         examMinutes = new EditText(a);
         examMinutes.setInputType(InputType.TYPE_CLASS_NUMBER);
         examMinutes.setHint("30");
@@ -305,18 +318,67 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         examMinutes.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(3)});
         examMinutes.setText(String.valueOf(a.getSharedPreferences("exam", 0).getInt("minutes", 30)));
         examMinutes.setGravity(Gravity.CENTER);
+        examMinutes.setTextColor(UI.col(a, R.color.text));
+        examMinutes.setHintTextColor(UI.col(a, R.color.text2));
+        examMinutes.setBackground(UI.rect(UI.col(a, R.color.bg), 8));
         LinearLayout.LayoutParams minutesLp = new LinearLayout.LayoutParams(UI.dp(76), UI.dp(52));
         minutesLp.leftMargin = UI.dp(12);
         durationRow.addView(examMinutes, minutesLp);
-        durationRow.addView(UI.tv(a, "min", 14, UI.col(a, R.color.text2), false));
+        TextView minLabel = UI.tv(a, "min", 14, UI.col(a, R.color.text2), false);
+        LinearLayout.LayoutParams minLp = new LinearLayout.LayoutParams(UI.W, UI.W);
+        minLp.leftMargin = UI.dp(6);
+        durationRow.addView(minLabel, minLp);
         panel.addView(durationRow);
+
+        examPresets = new MaterialButtonToggleGroup(a);
+        examPresets.setSingleSelection(true);
+        examPresets.setSelectionRequired(false);
+        examPresets.setGravity(Gravity.CENTER);
+        int[] presets = {15, 30, 45, 60};
+        int storedMinutes = a.getSharedPreferences("exam", 0).getInt("minutes", 30);
+        for (final int value : presets) {
+            MaterialButton preset = new MaterialButton(a, null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle);
+            preset.setId(View.generateViewId());
+            preset.setText(String.valueOf(value));
+            preset.setTextSize(13);
+            preset.setInsetTop(0);
+            preset.setInsetBottom(0);
+            preset.setMinWidth(UI.dp(52));
+            preset.setPadding(UI.dp(8), 0, UI.dp(8), 0);
+            preset.setTag(Integer.valueOf(value));
+            examPresets.addView(preset, new LinearLayout.LayoutParams(UI.W, UI.dp(40)));
+            if (value == storedMinutes) examPresets.check(preset.getId());
+        }
+        LinearLayout.LayoutParams presetLp = new LinearLayout.LayoutParams(UI.M, UI.W);
+        presetLp.topMargin = UI.dp(6);
+        panel.addView(examPresets, presetLp);
+        examPresets.addOnButtonCheckedListener(new MaterialButtonToggleGroup.OnButtonCheckedListener() {
+            @Override public void onButtonChecked(MaterialButtonToggleGroup group, int checkedId, boolean checked) {
+                if (!checked) return;
+                MaterialButton selected = group.findViewById(checkedId);
+                if (selected == null) return;
+                int minutes = ((Integer) selected.getTag()).intValue();
+                examMinutes.setText(String.valueOf(minutes));
+                if (!a.getSharedPreferences("exam", 0).getBoolean("running", false)) resetExam();
+            }
+        });
+        examMinutes.setOnFocusChangeListener((view, focused) -> {
+            if (!focused) syncExamDuration();
+        });
+        examEnd = UI.tv(a, "Ready when you are", 12, UI.col(a, R.color.text2), false);
+        examEnd.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams endLp = new LinearLayout.LayoutParams(UI.M, UI.W);
+        endLp.topMargin = UI.dp(4);
+        panel.addView(examEnd, endLp);
+
         LinearLayout controls = new LinearLayout(a);
         controls.setGravity(Gravity.CENTER);
         ImageView reset = UI.circle(a, R.drawable.ic_reset, 48, UI.col(a, R.color.surface), UI.col(a, R.color.text2), 24);
-        reset.setContentDescription("Reset exam timer");
+        reset.setContentDescription("Reset timer");
         reset.setOnClickListener(v -> resetExam());
         examPlay = UI.circle(a, R.drawable.ic_play, 72, UI.col(a, R.color.primary), Color.WHITE, 36);
-        examPlay.setContentDescription("Start or pause exam timer");
+        examPlay.setContentDescription("Start or pause timer");
         examPlay.setOnClickListener(v -> toggleExam());
         LinearLayout.LayoutParams resetLp = new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48));
         resetLp.setMargins(UI.dp(24), UI.dp(12), UI.dp(24), UI.dp(12));
@@ -327,36 +389,59 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         return panel;
     }
 
+    private void syncExamDuration() {
+        if (examMinutes == null || a.getSharedPreferences("exam", 0).getBoolean("running", false)) return;
+        int minutes;
+        try { minutes = Math.max(1, Math.min(600, Integer.parseInt(examMinutes.getText().toString().trim()))); }
+        catch (Exception ignored) { minutes = 30; }
+        a.getSharedPreferences("exam", 0).edit().putInt("minutes", minutes)
+                .putLong("remaining", minutes * 60000L).putBoolean("running", false).apply();
+        if (examPresets != null) {
+            boolean matching = false;
+            for (int i = 0; i < examPresets.getChildCount(); i++) {
+                View child = examPresets.getChildAt(i);
+                if (child instanceof MaterialButton && ((Integer) child.getTag()).intValue() == minutes) {
+                    examPresets.check(child.getId());
+                    matching = true;
+                    break;
+                }
+            }
+            if (!matching) examPresets.clearChecked();
+        }
+        updateExam();
+    }
+
     private void toggleExam() {
         android.content.SharedPreferences prefs = a.getSharedPreferences("exam", 0);
         long end = prefs.getLong("end", 0);
         boolean running = prefs.getBoolean("running", false);
         if (running) {
-            prefs.edit().putLong("remaining", Math.max(0, end - System.currentTimeMillis())).putBoolean("running", false).apply();
+            prefs.edit().putLong("remaining", Math.max(0, end - System.currentTimeMillis()))
+                    .putBoolean("running", false).putBoolean("active", true).apply();
             ExamTimer.cancel(a);
         } else {
             int minutes;
             try { minutes = Math.max(1, Math.min(600, Integer.parseInt(examMinutes.getText().toString()))); }
             catch (Exception ignored) { minutes = 30; }
-                long left = prefs.getLong("remaining", 0);
-                if (left <= 0 || minutes != prefs.getInt("minutes", 60)) left = minutes * 60000L;
-                long endAt = System.currentTimeMillis() + left;
-                prefs.edit().putInt("minutes", minutes).putLong("remaining", left).putLong("end", endAt)
-                    .putBoolean("running", true).apply();
-                ExamTimer.schedule(a, endAt);
+            long left = prefs.getLong("remaining", 0);
+            if (left <= 0 || minutes != prefs.getInt("minutes", 30)) left = minutes * 60000L;
+            long endAt = System.currentTimeMillis() + left;
+            prefs.edit().putInt("minutes", minutes).putLong("remaining", left).putLong("end", endAt)
+                    .putBoolean("running", true).putBoolean("active", true).apply();
+            ExamTimer.schedule(a, endAt);
         }
         updateExam();
     }
 
-            private void resetExam() {
-            int minutes;
-            try { minutes = Math.max(1, Math.min(600, Integer.parseInt(examMinutes.getText().toString()))); }
-            catch (Exception ignored) { minutes = 30; }
-            ExamTimer.cancel(a);
-            a.getSharedPreferences("exam", 0).edit().putInt("minutes", minutes)
-                .putLong("remaining", minutes * 60000L).putBoolean("running", false).apply();
-            updateExam();
-            }
+    private void resetExam() {
+        int minutes;
+        try { minutes = Math.max(1, Math.min(600, Integer.parseInt(examMinutes.getText().toString().trim()))); }
+        catch (Exception ignored) { minutes = 30; }
+        ExamTimer.cancel(a);
+        a.getSharedPreferences("exam", 0).edit().putInt("minutes", minutes)
+            .putLong("remaining", minutes * 60000L).putBoolean("running", false).putBoolean("active", true).apply();
+        updateExam();
+    }
 
     private void updateExam() {
         android.content.SharedPreferences prefs = a.getSharedPreferences("exam", 0);
@@ -370,27 +455,42 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         }
         int minutes = Math.max(1, prefs.getInt("minutes", 30));
         long total = minutes * 60000L;
-        examTimerView.set(total > 0 ? (float) remaining / total : 0f, UI.mmss(remaining), "Exam", 0, 0,
+        examTimerView.set(total > 0 ? (float) remaining / total : 0f, UI.mmss(remaining), "Timer", 0, 0,
                 UI.col(a, R.color.primary));
         if (examPlay != null) examPlay.setImageResource(running ? R.drawable.ic_pause : R.drawable.ic_play);
         if (examMinutes != null) examMinutes.setEnabled(!running);
+        if (examPresets != null) {
+            examPresets.setEnabled(!running);
+            for (int i = 0; i < examPresets.getChildCount(); i++) examPresets.getChildAt(i).setEnabled(!running);
+        }
+        if (examEnd != null) {
+            examEnd.setText(running ? "Finishes at " + DateFormat.getTimeFormat(a).format(new Date(prefs.getLong("end", 0)))
+                : remaining == 0 ? "Session complete" : "Ready when you are");
+        }
     }
 
-    private void openSystemApp(String category, String fallbackAction) {
+    private void openSystemApp(String category) {
         PackageManager pm = a.getPackageManager();
         Intent launch = new Intent(Intent.ACTION_MAIN).addCategory(category);
-        ResolveInfo result = pm.resolveActivity(launch, 0);
-        if (result != null) {
-            launch.setClassName(result.activityInfo.packageName, result.activityInfo.name);
-            try { a.startActivity(launch); return; } catch (Exception ignored) { }
+        List<ResolveInfo> apps = pm.queryIntentActivities(launch, PackageManager.MATCH_DEFAULT_ONLY);
+        for (ResolveInfo app : apps) {
+            try {
+                launch.setClassName(app.activityInfo.packageName, app.activityInfo.name);
+                a.startActivity(launch);
+                return;
+            } catch (Exception ignored) { }
         }
-        if (fallbackAction != null && fallbackAction.startsWith("android.intent")) {
-            try { a.startActivity(new Intent(fallbackAction)); return; } catch (Exception ignored) { }
-        }
-        if (fallbackAction != null && fallbackAction.startsWith("content:")) {
-            try { a.startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(fallbackAction))); return; } catch (Exception ignored) { }
-        }
+        try { a.startActivity(new Intent(Intent.ACTION_MAIN).addCategory(category)); return; } catch (Exception ignored) { }
         a.toast(labelFor(category) + " app not found");
+    }
+
+    private void openClock() {
+        try { a.startActivity(new Intent(AlarmClock.ACTION_SHOW_ALARMS)); }
+        catch (Exception ignored) { openSystemApp("android.intent.category.APP_ALARM"); }
+    }
+
+    private void openCalendar() {
+        openSystemApp(Intent.CATEGORY_APP_CALENDAR);
     }
 
     private String labelFor(String category) {
@@ -399,27 +499,12 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     }
 
     private void chooseShortcut() {
-        final PackageManager pm = a.getPackageManager();
-        Intent query = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-        final List<ResolveInfo> apps = pm.queryIntentActivities(query, 0);
-        java.util.Collections.sort(apps, new ResolveInfo.DisplayNameComparator(pm));
-        final String[] labels = new String[apps.size()];
-        for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i).loadLabel(pm).toString();
-        new AlertDialog.Builder(a).setTitle("Add app shortcut").setItems(labels, new DialogInterface.OnClickListener() {
-            @Override public void onClick(DialogInterface dialog, int which) {
-                String pkg = apps.get(which).activityInfo.packageName;
-                android.content.SharedPreferences p = a.getSharedPreferences("shortcuts", 0);
-                java.util.Set<String> items = new java.util.HashSet<>(p.getStringSet("packages", java.util.Collections.<String>emptySet()));
-                items.add(pkg);
-                p.edit().putStringSet("packages", items).apply();
-                renderShortcuts();
-            }
-        }).show();
+        a.show(MainActivity.APP_PICKER);
     }
 
     private void renderShortcuts() {
         if (shortcutsGrid == null) return;
-        while (shortcutsGrid.getChildCount() > 8) shortcutsGrid.removeViewAt(8);
+        while (shortcutsGrid.getChildCount() > 9) shortcutsGrid.removeViewAt(9);
         android.content.SharedPreferences p = a.getSharedPreferences("shortcuts", 0);
         java.util.ArrayList<String> packages = new java.util.ArrayList<>(
             p.getStringSet("packages", java.util.Collections.<String>emptySet()));
