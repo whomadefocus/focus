@@ -1,6 +1,8 @@
 package dev.focus.pomodoro;
 
 import android.content.Context;
+import android.app.DatePickerDialog;
+import android.app.TimePickerDialog;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
@@ -11,6 +13,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -20,6 +23,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -36,6 +40,7 @@ final class NotesPage extends LinearLayout {
         Day d;
         EditText e;
         TextView head;
+        LinearLayout taskList;
         TextWatcher w;
     }
 
@@ -56,7 +61,10 @@ final class NotesPage extends LinearLayout {
         addView(UI.topBar(a, "Notes", new View.OnClickListener() { @Override public void onClick(View v) { a.back(); } }),
                 new LinearLayout.LayoutParams(UI.M, UI.W));
 
-        for (String d : Notes.days(a)) {
+        ArrayList<String> allDays = new ArrayList<>(Notes.days(a));
+        for (String d : TaskStore.days(a)) if (!allDays.contains(d)) allDays.add(d);
+        java.util.Collections.sort(allDays, java.util.Collections.reverseOrder());
+        for (String d : allDays) {
             Day x = new Day();
             x.day = d;
             x.text = Notes.read(a, d);
@@ -76,6 +84,7 @@ final class NotesPage extends LinearLayout {
                 h.d = d;
                 h.head.setText(label(d.day));
                 h.e.setText(d.text);
+                showTasks(h);
                 h.w = new W(d, h.e);
                 h.e.addTextChangedListener(h.w);
             }
@@ -100,12 +109,16 @@ final class NotesPage extends LinearLayout {
         top.setGravity(Gravity.CENTER_VERTICAL);
         h.head = UI.tv(c, "", 14, UI.col(c, R.color.text2), true);
         top.addView(h.head, new LinearLayout.LayoutParams(0, UI.W, 1f));
-        TextView task = UI.tv(c, BOX + " Task", 13, UI.col(c, R.color.primary), true);
+        TextView task = UI.tv(c, "+ Task", 13, UI.col(c, R.color.primary), true);
         task.setPadding(UI.dp(12), UI.dp(8), UI.dp(12), UI.dp(8));
         task.setBackground(UI.ripple(null, false, 16));
-        task.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { addTask(h.e); } });
+        task.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { addStructuredTask(h); } });
         top.addView(task, new LinearLayout.LayoutParams(UI.W, UI.W));
         card.addView(top, new LinearLayout.LayoutParams(UI.M, UI.W));
+
+        h.taskList = new LinearLayout(c);
+        h.taskList.setOrientation(VERTICAL);
+        card.addView(h.taskList, new LinearLayout.LayoutParams(UI.M, UI.W));
 
         EditText e = new EditText(c);
         e.setBackground(null);
@@ -144,6 +157,72 @@ final class NotesPage extends LinearLayout {
         card.addView(e, new LinearLayout.LayoutParams(UI.M, UI.W));
         card.setTag(h);
         return card;
+    }
+
+    private void showTasks(final RowH holder) {
+        holder.taskList.removeAllViews();
+        for (final TaskStore.Task task : TaskStore.forDay(a, holder.d.day)) {
+            LinearLayout row = new LinearLayout(a);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            CheckBox check = new CheckBox(a);
+            check.setText(task.title);
+            check.setTextSize(15);
+            check.setTextColor(UI.col(a, R.color.text));
+            check.setChecked(task.done);
+            check.setOnCheckedChangeListener((button, checked) -> {
+                task.done = checked;
+                TaskStore.update(a, task);
+                if (checked && task.remindAt > 0) a.toast("Task completed; reminder canceled");
+            });
+            row.addView(check, new LinearLayout.LayoutParams(0, UI.W, 1f));
+            if (task.remindAt > 0) {
+                TextView reminder = UI.tv(a, android.text.format.DateFormat.getMediumDateFormat(a).format(new Date(task.remindAt))
+                        + " · " + android.text.format.DateFormat.getTimeFormat(a).format(new Date(task.remindAt)),
+                        12, UI.col(a, R.color.text2), false);
+                row.addView(reminder, new LinearLayout.LayoutParams(UI.W, UI.W));
+            }
+            holder.taskList.addView(row, new LinearLayout.LayoutParams(UI.M, UI.W));
+        }
+    }
+
+    private void addStructuredTask(final RowH holder) {
+        final EditText title = new EditText(a);
+        title.setSingleLine(true);
+        title.setHint("Task");
+        final long[] reminderAt = {0};
+        final TextView reminder = UI.tv(a, "Add reminder", 14, UI.col(a, R.color.primary), true);
+        reminder.setPadding(0, UI.dp(12), 0, UI.dp(8));
+        reminder.setOnClickListener(v -> chooseReminder(reminderAt, reminder));
+        LinearLayout content = new LinearLayout(a);
+        content.setOrientation(VERTICAL);
+        content.addView(title);
+        content.addView(reminder);
+        new android.app.AlertDialog.Builder(a).setTitle("New task").setView(content)
+                .setNegativeButton("Cancel", null).setPositiveButton("Add", (dialog, which) -> {
+                    String text = title.getText().toString().trim();
+                    if (text.isEmpty()) { a.toast("Enter a task name"); return; }
+                    TaskStore.add(a, holder.d.day, text, reminderAt[0]);
+                    showTasks(holder);
+                }).show();
+    }
+
+    private void chooseReminder(final long[] output, final TextView label) {
+        final Calendar value = Calendar.getInstance();
+        DatePickerDialog date = new DatePickerDialog(a, (picker, year, month, day) -> {
+            value.set(Calendar.YEAR, year);
+            value.set(Calendar.MONTH, month);
+            value.set(Calendar.DAY_OF_MONTH, day);
+            new TimePickerDialog(a, (timePicker, hour, minute) -> {
+                value.set(Calendar.HOUR_OF_DAY, hour);
+                value.set(Calendar.MINUTE, minute);
+                value.set(Calendar.SECOND, 0);
+                output[0] = value.getTimeInMillis();
+                label.setText(android.text.format.DateFormat.getMediumDateFormat(a).format(value.getTime())
+                        + " · " + android.text.format.DateFormat.getTimeFormat(a).format(value.getTime()));
+            }, value.get(Calendar.HOUR_OF_DAY), value.get(Calendar.MINUTE), android.text.format.DateFormat.is24HourFormat(a)).show();
+        }, value.get(Calendar.YEAR), value.get(Calendar.MONTH), value.get(Calendar.DAY_OF_MONTH));
+        date.getDatePicker().setMinDate(System.currentTimeMillis() - 1000);
+        date.show();
     }
 
     private void addTask(EditText t) {

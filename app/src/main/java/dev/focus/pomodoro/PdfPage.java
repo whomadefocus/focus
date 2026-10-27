@@ -48,6 +48,7 @@ final class PdfPage extends LinearLayout implements MainActivity.Refresh {
                 Object[] o = (Object[]) v.getTag();
                 ((TextView) o[0]).setText(d.name);
                 ((TextView) o[1]).setText(PdfLib.status(d));
+                PdfCovers.load(a, d.uri, (ImageView) o[3]);
                 FrameLayout bar = (FrameLayout) o[2];
                 bar.removeAllViews();
                 bar.addView(UI.bar(a, PdfLib.pct(d)), new FrameLayout.LayoutParams(UI.M, UI.M));
@@ -88,8 +89,9 @@ final class PdfPage extends LinearLayout implements MainActivity.Refresh {
         top.setPadding(UI.dp(16), UI.dp(12), UI.dp(16), UI.dp(10));
         ImageView icon = new ImageView(c);
         icon.setImageResource(R.drawable.ic_pdf);
-        icon.setColorFilter(UI.col(c, R.color.primary));
-        top.addView(icon, new LinearLayout.LayoutParams(UI.dp(24), UI.dp(24)));
+        icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        icon.setBackgroundColor(0xFFFFFFFF);
+        top.addView(icon, new LinearLayout.LayoutParams(UI.dp(44), UI.dp(56)));
         LinearLayout t = new LinearLayout(c);
         t.setOrientation(VERTICAL);
         TextView name = UI.tv(c, "", 16, UI.col(c, R.color.text), false);
@@ -99,14 +101,14 @@ final class PdfPage extends LinearLayout implements MainActivity.Refresh {
         t.addView(name, new LinearLayout.LayoutParams(UI.M, UI.W));
         t.addView(sub, new LinearLayout.LayoutParams(UI.M, UI.W));
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, UI.W, 1f);
-        tl.leftMargin = UI.dp(16);
+        tl.leftMargin = UI.dp(12);
         top.addView(t, tl);
         r.addView(top, new LinearLayout.LayoutParams(UI.M, UI.W));
         FrameLayout bar = new FrameLayout(c);
         LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(UI.M, UI.dp(3));
         bl.setMargins(UI.dp(16), 0, UI.dp(16), UI.dp(8));
         r.addView(bar, bl);
-        r.setTag(new Object[]{name, sub, bar});
+        r.setTag(new Object[]{name, sub, bar, icon});
         return r;
     }
 

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Focus</string>
+    <string name="accessibility_service_description">Focus checks configured daily app limits and shows a blocking screen after a limit is reached.</string>
 </resources>

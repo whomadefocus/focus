@@ -24,7 +24,7 @@ import java.util.ArrayList;
 public class MainActivity extends Activity {
     interface Refresh { void refresh(); }
 
-    static final int HOME = 0, NOTES = 1, MUSIC = 2, PDFS = 3;
+    static final int HOME = 0, NOTES = 1, MUSIC = 2, PDFS = 3, SETTINGS = 4, APP_DRAWER = 5, SCREEN_TIME = 6;
     private static final int RQ_PDF = 11, RQ_DIR = 12, RQ_AUDIO = 21, RQ_NOTIF = 22;
     private static final int LOCK_FLAGS = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
             | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD;
@@ -70,6 +70,9 @@ public class MainActivity extends Activity {
             case NOTES: page = new NotesPage(this); break;
             case MUSIC: page = new MusicPage(this); break;
             case PDFS: page = new PdfPage(this); break;
+            case SETTINGS: page = new SettingsPage(this); break;
+            case APP_DRAWER: page = new AppDrawerPage(this); break;
+            case SCREEN_TIME: page = new ScreenTimePage(this); break;
             default: page = new HomePage(this);
         }
         root.addView(page, new FrameLayout.LayoutParams(UI.M, UI.M));
@@ -222,5 +225,5 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
-    private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
+    void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
 }

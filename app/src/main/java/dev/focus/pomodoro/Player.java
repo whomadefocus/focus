@@ -25,8 +25,10 @@ final class Player {
         final Uri uri;
         final String title, sub;
         final boolean noise;
+        final long albumId;
 
-        Track(Uri u, String t, String s, boolean n) { uri = u; title = t; sub = s; noise = n; }
+        Track(Uri u, String t, String s, boolean n) { this(u, t, s, n, -1); }
+        Track(Uri u, String t, String s, boolean n, long album) { uri = u; title = t; sub = s; noise = n; albumId = album; }
 
         String key() { return noise ? "noise" : String.valueOf(uri); }
 
@@ -46,6 +48,7 @@ final class Player {
     private static AudioTrack noiseTrack;
     /** Index 0 is always the white-noise entry. */
     static List<Track> queue = new ArrayList<>();
+    private static List<Track> scanCache;
     static final List<Runnable> listeners = new ArrayList<>();
 
     private static final AudioManager.OnAudioFocusChangeListener FOCUS = new AudioManager.OnAudioFocusChangeListener() {
@@ -221,10 +224,11 @@ final class Player {
     }
 
     /** Reads the device's music library (needs the audio permission). */
-    static List<Track> scan(Context c) {
+    static synchronized List<Track> scan(Context c) {
+        if (scanCache != null) return new ArrayList<>(scanCache);
         ArrayList<Track> out = new ArrayList<>();
         String[] proj = {MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE,
-                MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION};
+                MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID};
         try (Cursor q = c.getContentResolver().query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, proj,
                 MediaStore.Audio.Media.IS_MUSIC + "!=0", null, MediaStore.Audio.Media.TITLE + " COLLATE NOCASE")) {
             if (q != null) {
@@ -233,10 +237,13 @@ final class Player {
                     if (artist == null || artist.equals("<unknown>")) artist = "Unknown artist";
                     String sub = artist + " \u00B7 " + UI.mmss(q.getLong(3) - 999);
                     out.add(new Track(ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, q.getLong(0)),
-                            q.getString(1), sub, false));
+                            q.getString(1), sub, false, q.getLong(4)));
                 }
             }
         } catch (Exception ignored) { }
-        return out;
+        scanCache = new ArrayList<>(out);
+        return new ArrayList<>(scanCache);
     }
+
+    static synchronized void clearScanCache() { scanCache = null; }
 }

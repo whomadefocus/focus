@@ -1,9 +1,12 @@
 package dev.focus.pomodoro;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.RectF;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.os.Bundle;
@@ -12,6 +15,8 @@ import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -21,6 +26,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.LruCache;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -30,7 +36,7 @@ import java.util.concurrent.Executors;
 
 /** Minimal PDF reader: continuous vertical scroll, landscape by default, no selection. */
 public class PdfActivity extends Activity {
-    private static final int MAX_W = 1600;
+    private static final int MAX_W = 1400;
 
     private PdfRenderer renderer;
     private ParcelFileDescriptor pfd;
@@ -50,6 +56,11 @@ public class PdfActivity extends Activity {
     private ProgressBar spin;
     private boolean landscape = true;
     private int shownPhase = -1;
+    private PageImage zoomImage;
+    private float lastTouchX, lastTouchY;
+    private final LruCache<String, Bitmap> bitmaps = new LruCache<String, Bitmap>(24 * 1024 * 1024) {
+        @Override protected int sizeOf(String key, Bitmap value) { return value.getByteCount(); }
+    };
 
     private final ExecutorService ex = Executors.newSingleThreadExecutor();
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -69,7 +80,9 @@ public class PdfActivity extends Activity {
         uri = getIntent().getStringExtra("uri");
         if (uri == null) { finish(); return; }
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (getSharedPreferences("reader", MODE_PRIVATE).getBoolean("keep_screen", true)) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF3A3A3A);
@@ -83,7 +96,8 @@ public class PdfActivity extends Activity {
         rv = new RecyclerView(this);
         lm = new LinearLayoutManager(this);
         rv.setLayoutManager(lm);
-        rv.setItemViewCacheSize(1);
+        rv.setItemViewCacheSize(2);
+        lm.setInitialPrefetchItemCount(2);
         col.addView(rv, new LinearLayout.LayoutParams(UI.M, 0, 1f));
 
         spin = new ProgressBar(this);
@@ -103,6 +117,44 @@ public class PdfActivity extends Activity {
 
             @Override public void onScrollStateChanged(RecyclerView r, int s) {
                 if (s == RecyclerView.SCROLL_STATE_IDLE) save();
+            }
+        });
+        final ScaleGestureDetector scaler = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override public boolean onScale(ScaleGestureDetector detector) {
+                if (zoomImage == null) return false;
+                zoomImage.scale(detector.getScaleFactor(), detector.getFocusX() - zoomImage.getLeft(),
+                        detector.getFocusY() - zoomImage.getTop());
+                return true;
+            }
+        });
+        rv.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            @Override public boolean onInterceptTouchEvent(RecyclerView view, MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && zoomImage != null && zoomImage.zoom <= 1f) zoomImage = null;
+                if (event.getPointerCount() > 1 || (zoomImage != null && zoomImage.zoom > 1f)) {
+                    if (zoomImage == null || event.getActionMasked() == MotionEvent.ACTION_DOWN
+                            || event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
+                        View child = view.findChildViewUnder(event.getX(), event.getY());
+                        if (child instanceof PageImage) zoomImage = (PageImage) child;
+                    }
+                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                        lastTouchX = event.getX();
+                        lastTouchY = event.getY();
+                    }
+                    return zoomImage != null;
+                }
+                return false;
+            }
+
+            @Override public void onTouchEvent(RecyclerView view, MotionEvent event) {
+                scaler.onTouchEvent(event);
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE && zoomImage != null
+                        && !scaler.isInProgress() && zoomImage.zoom > 1f) {
+                    zoomImage.pan(event.getX() - lastTouchX, event.getY() - lastTouchY);
+                }
+                lastTouchX = event.getX();
+                lastTouchY = event.getY();
+                if ((event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL)
+                        && zoomImage != null && zoomImage.zoom <= 1f) zoomImage = null;
             }
         });
         // keeps the current page when the width changes (rotation, hiding system bars)
@@ -276,8 +328,7 @@ public class PdfActivity extends Activity {
         }
 
         @Override public VH onCreateViewHolder(ViewGroup p, int t) {
-            ImageView iv = new ImageView(PdfActivity.this);
-            iv.setScaleType(ImageView.ScaleType.FIT_XY);
+            PageImage iv = new PageImage(PdfActivity.this);
             iv.setBackgroundColor(Color.WHITE);
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(UI.M, 100);
             lp.bottomMargin = UI.dp(6);
@@ -288,20 +339,23 @@ public class PdfActivity extends Activity {
         @Override public void onBindViewHolder(VH vh, int pos) {
             final ImageView iv = (ImageView) vh.itemView;
             final int position = pos;
-            iv.setImageDrawable(null);
+            ((PageImage) iv).clearImage();
             iv.setTag(Integer.valueOf(position));
             int w = Math.max(width, 1);
             ViewGroup.LayoutParams lp = iv.getLayoutParams();
             lp.height = (int) ((long) w * ph[position] / pw[position]);
             iv.setLayoutParams(lp);
             final int target = Math.min(w, MAX_W);
-            ex.execute(new Runnable() { @Override public void run() { render(iv, position, target); } });
+            final String key = bitmapKey(position, target);
+            Bitmap cached = bitmaps.get(key);
+            if (cached != null) ((PageImage) iv).show(cached);
+            else ex.execute(new Runnable() { @Override public void run() { render(iv, position, target); } });
         }
 
         @Override public void onViewRecycled(VH vh) {
             ImageView iv = (ImageView) vh.itemView;
             iv.setTag(null);
-            iv.setImageDrawable(null);
+            ((PageImage) iv).clearImage();
         }
 
         @Override public int getItemCount() { return count; }
@@ -314,6 +368,13 @@ public class PdfActivity extends Activity {
 
     private void render(final ImageView iv, final int pos, int w) {
         if (!stillBound(iv, pos)) return;
+        final String key = bitmapKey(pos, w);
+        Bitmap cached = bitmaps.get(key);
+        if (cached != null) {
+            final Bitmap hit = cached;
+            h.post(new Runnable() { @Override public void run() { if (stillBound(iv, pos)) ((PageImage) iv).show(hit); } });
+            return;
+        }
         Bitmap made = null;
         synchronized (lock) {
             if (closed) return;
@@ -331,9 +392,81 @@ public class PdfActivity extends Activity {
             }
         }
         final Bitmap bmp = made;
+        if (bmp == null || closed) return;
+        bitmaps.put(key, bmp);
         h.post(new Runnable() {
-            @Override public void run() { if (stillBound(iv, pos)) iv.setImageBitmap(bmp); }
+            @Override public void run() { if (stillBound(iv, pos)) ((PageImage) iv).show(bmp); }
         });
+    }
+
+    private String bitmapKey(int page, int width) { return page + "@" + width; }
+
+    private static final class PageImage extends ImageView {
+        final Matrix transform = new Matrix();
+        Bitmap bitmap;
+        float zoom = 1f;
+
+        PageImage(Context context) {
+            super(context);
+            setScaleType(ScaleType.MATRIX);
+        }
+
+        void show(Bitmap value) {
+            bitmap = value;
+            setImageBitmap(value);
+            fit();
+        }
+
+        void clearImage() {
+            bitmap = null;
+            zoom = 1f;
+            setImageDrawable(null);
+            transform.reset();
+            setImageMatrix(transform);
+        }
+
+        @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            fit();
+        }
+
+        private void fit() {
+            if (bitmap == null || getWidth() <= 0 || getHeight() <= 0) return;
+            float scale = Math.min((float) getWidth() / bitmap.getWidth(), (float) getHeight() / bitmap.getHeight());
+            float dx = (getWidth() - bitmap.getWidth() * scale) / 2f;
+            float dy = (getHeight() - bitmap.getHeight() * scale) / 2f;
+            transform.setScale(scale, scale);
+            transform.postTranslate(dx, dy);
+            zoom = 1f;
+            setImageMatrix(transform);
+        }
+
+        void scale(float factor, float x, float y) {
+            float next = Math.max(1f, Math.min(5f, zoom * factor));
+            if (next == 1f) { fit(); return; }
+            float actual = next / zoom;
+            transform.postScale(actual, actual, x, y);
+            zoom = next;
+            constrain();
+            setImageMatrix(transform);
+        }
+
+        void pan(float dx, float dy) {
+            transform.postTranslate(dx, dy);
+            constrain();
+            setImageMatrix(transform);
+        }
+
+        private void constrain() {
+            if (bitmap == null) return;
+            RectF bounds = new RectF(0, 0, bitmap.getWidth(), bitmap.getHeight());
+            transform.mapRect(bounds);
+            float dx = bounds.width() <= getWidth() ? (getWidth() - bounds.width()) / 2f - bounds.left
+                    : bounds.left > 0 ? -bounds.left : bounds.right < getWidth() ? getWidth() - bounds.right : 0;
+            float dy = bounds.height() <= getHeight() ? (getHeight() - bounds.height()) / 2f - bounds.top
+                    : bounds.top > 0 ? -bounds.top : bounds.bottom < getHeight() ? getHeight() - bounds.bottom : 0;
+            transform.postTranslate(dx, dy);
+        }
     }
 
     // ---------- lifecycle ----------

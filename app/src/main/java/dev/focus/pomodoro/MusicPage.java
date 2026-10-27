@@ -31,7 +31,12 @@ final class MusicPage extends LinearLayout implements MainActivity.Refresh {
         a = act;
         setOrientation(VERTICAL);
         setBackgroundColor(UI.col(a, R.color.bg));
-        addView(UI.topBar(a, "Music", new View.OnClickListener() { @Override public void onClick(View v) { a.back(); } }),
+        ImageView refresh = UI.ib(a, R.drawable.ic_reset, UI.col(a, R.color.text), 48, 12);
+        refresh.setContentDescription("Rescan music library");
+        refresh.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { Player.clearScanCache(); load(); }
+        });
+        addView(UI.topBar(a, "Music", new View.OnClickListener() { @Override public void onClick(View v) { a.back(); } }, refresh),
                 new LinearLayout.LayoutParams(UI.M, UI.W));
 
         perm = UI.tv(a, "Tap to allow access to your music library", 14, UI.col(a, R.color.primary), true);
@@ -48,7 +53,7 @@ final class MusicPage extends LinearLayout implements MainActivity.Refresh {
             @Override void bind(View v, final Player.Track t) {
                 Object[] o = (Object[]) v.getTag();
                 TextView title = (TextView) o[0], sub = (TextView) o[1];
-                ImageView icon = (ImageView) o[2];
+                ImageView icon = (ImageView) o[2], art = (ImageView) o[3];
                 boolean cur = Player.isCurrent(t);
                 int color = UI.col(a, cur ? R.color.primary : R.color.text);
                 title.setText(t.title);
@@ -56,6 +61,10 @@ final class MusicPage extends LinearLayout implements MainActivity.Refresh {
                 sub.setText(t.sub);
                 icon.setImageResource(t.noise ? R.drawable.ic_noise : (cur && Player.playing ? R.drawable.ic_pause : R.drawable.ic_play));
                 icon.setColorFilter(cur ? UI.col(a, R.color.primary) : UI.col(a, R.color.text2));
+                if (t.noise) {
+                    art.setImageResource(R.drawable.ic_noise);
+                    art.setTag(null);
+                } else Artwork.load(a, t.albumId, art);
                 v.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View x) {
                         if (Player.isCurrent(t) && Player.active()) Player.toggle(); else Player.play(t);
@@ -80,7 +89,13 @@ final class MusicPage extends LinearLayout implements MainActivity.Refresh {
         r.setLayoutParams(new RecyclerView.LayoutParams(UI.M, UI.W));
         ImageView icon = new ImageView(c);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        r.addView(icon, new LinearLayout.LayoutParams(UI.dp(24), UI.dp(24)));
+        ImageView art = new ImageView(c);
+        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.setBackground(UI.rect(UI.col(c, R.color.divider), 4));
+        r.addView(art, new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48)));
+        LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(UI.dp(24), UI.dp(24));
+        il.leftMargin = UI.dp(10);
+        r.addView(icon, il);
         LinearLayout t = new LinearLayout(c);
         t.setOrientation(VERTICAL);
         TextView title = UI.tv(c, "", 16, UI.col(c, R.color.text), false);
@@ -94,7 +109,7 @@ final class MusicPage extends LinearLayout implements MainActivity.Refresh {
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, UI.W, 1f);
         tl.leftMargin = UI.dp(16);
         r.addView(t, tl);
-        r.setTag(new Object[]{title, sub, icon});
+        r.setTag(new Object[]{title, sub, icon, art});
         return r;
     }
 

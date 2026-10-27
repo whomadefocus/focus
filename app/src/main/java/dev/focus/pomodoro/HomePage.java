@@ -2,19 +2,29 @@ package dev.focus.pomodoro;
 
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Color;
-import android.text.InputFilter;
+import android.provider.AlarmClock;
+import android.text.format.DateFormat;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.Switch;
 import android.widget.TextView;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 /** Main page: timer, three round buttons, last PDF, player controller. */
 final class HomePage extends ScrollView implements MainActivity.Refresh {
@@ -22,6 +32,11 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     private TimerView tv;
     private ImageView play;
     private LinearLayout pdfCard;
+    private LinearLayout datePanel, timerPanel, examPanel, shortcutRow;
+    private TextView dateText, clockText, examTime;
+    private final TextView[] tabViews = new TextView[3];
+    private EditText examMinutes;
+    private int selectedTab = 1;
 
     private final Runnable onState = new Runnable() { @Override public void run() { update(); } };
     private final Runnable tick = new Runnable() {
@@ -49,16 +64,39 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.addView(UI.tv(a, "Focus", 24, text, true), new LinearLayout.LayoutParams(0, UI.W, 1f));
         ImageView gear = UI.ib(a, R.drawable.ic_settings, muted, 48, 12);
-        gear.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showSettings(); } });
+        gear.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { a.show(MainActivity.SETTINGS); } });
         head.addView(gear, new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48)));
         col.addView(head, new LinearLayout.LayoutParams(UI.M, UI.W));
 
+        LinearLayout tabs = new LinearLayout(a);
+        tabs.setGravity(Gravity.CENTER);
+        tabs.setBackground(UI.rect(surface, 10));
+        tabs.addView(tab("Clock & date", 1), new LinearLayout.LayoutParams(0, UI.dp(44), 1f));
+        tabs.addView(tab("Pomodoro", 0), new LinearLayout.LayoutParams(0, UI.dp(44), 1f));
+        tabs.addView(tab("Exam timer", 2), new LinearLayout.LayoutParams(0, UI.dp(44), 1f));
+        LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(UI.M, UI.W);
+        tabLp.topMargin = UI.dp(12);
+        col.addView(tabs, tabLp);
+
+        datePanel = new LinearLayout(a);
+        datePanel.setOrientation(LinearLayout.VERTICAL);
+        datePanel.setGravity(Gravity.CENTER);
+        dateText = UI.tv(a, "", 18, muted, false);
+        dateText.setGravity(Gravity.CENTER);
+        clockText = UI.tv(a, "", 56, text, true);
+        clockText.setGravity(Gravity.CENTER);
+        datePanel.addView(clockText, new LinearLayout.LayoutParams(UI.M, UI.W));
+        datePanel.addView(dateText, new LinearLayout.LayoutParams(UI.M, UI.W));
+        col.addView(datePanel, new LinearLayout.LayoutParams(UI.M, UI.dp(260)));
+
         // timer
+        timerPanel = new LinearLayout(a);
+        timerPanel.setOrientation(LinearLayout.VERTICAL);
         tv = new TimerView(a);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(UI.W, UI.W);
         tlp.gravity = Gravity.CENTER_HORIZONTAL;
         tlp.topMargin = UI.dp(4);
-        col.addView(tv, tlp);
+        timerPanel.addView(tv, tlp);
 
         // controls
         LinearLayout ctl = new LinearLayout(a);
@@ -77,7 +115,12 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         ctl.addView(skip, new LinearLayout.LayoutParams(side));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(UI.M, UI.W);
         clp.topMargin = UI.dp(8);
-        col.addView(ctl, clp);
+        timerPanel.addView(ctl, clp);
+        col.addView(timerPanel, new LinearLayout.LayoutParams(UI.M, UI.W));
+
+        examPanel = buildExamPanel();
+        col.addView(examPanel, new LinearLayout.LayoutParams(UI.M, UI.dp(260)));
+        setTab(selectedTab);
 
         // three round buttons
         LinearLayout nav = new LinearLayout(a);
@@ -88,6 +131,32 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(UI.M, UI.W);
         nlp.topMargin = UI.dp(28);
         col.addView(nav, nlp);
+
+        shortcutRow = new LinearLayout(a);
+        shortcutRow.setGravity(Gravity.CENTER);
+        shortcutRow.addView(quickButton(android.R.drawable.ic_lock_idle_alarm, "Clock", new Runnable() {
+            @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CLOCK, AlarmClock.ACTION_SHOW_ALARMS); }
+        }));
+        shortcutRow.addView(quickButton(android.R.drawable.ic_menu_manage, "Calculator", new Runnable() {
+            @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALCULATOR, null); }
+        }));
+        shortcutRow.addView(quickButton(android.R.drawable.ic_menu_my_calendar, "Calendar", new Runnable() {
+            @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALENDAR, null); }
+        }));
+        shortcutRow.addView(quickButton(android.R.drawable.ic_menu_sort_by_size, "All apps", new Runnable() {
+            @Override public void run() { a.show(MainActivity.APP_DRAWER); }
+        }));
+        ImageView addShortcut = UI.circle(a, R.drawable.ic_add, 48, surface, primary, 24);
+        addShortcut.setContentDescription("Add app shortcut");
+        addShortcut.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { chooseShortcut(); } });
+        shortcutRow.addView(addShortcut, new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48)));
+        HorizontalScrollView shortcutScroll = new HorizontalScrollView(a);
+        shortcutScroll.setHorizontalScrollBarEnabled(false);
+        shortcutScroll.addView(shortcutRow, new HorizontalScrollView.LayoutParams(UI.W, UI.M));
+        LinearLayout.LayoutParams shortcutLp = new LinearLayout.LayoutParams(UI.M, UI.dp(64));
+        shortcutLp.topMargin = UI.dp(12);
+        col.addView(shortcutScroll, shortcutLp);
+        renderShortcuts();
 
         // last pdf
         pdfCard = new LinearLayout(a);
@@ -124,6 +193,151 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         return c;
     }
 
+    private View tab(final String label, final int tab) {
+        TextView view = UI.tv(a, label, 13, UI.col(a, R.color.text2), true);
+        view.setGravity(Gravity.CENTER);
+        tabViews[tab] = view;
+        view.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { setTab(tab); } });
+        return view;
+    }
+
+    private void setTab(int tab) {
+        selectedTab = tab;
+        datePanel.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
+        timerPanel.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
+        examPanel.setVisibility(tab == 2 ? View.VISIBLE : View.GONE);
+        for (int i = 0; i < tabViews.length; i++) {
+            tabViews[i].setTextColor(UI.col(a, i == tab ? R.color.surface : R.color.text2));
+            tabViews[i].setBackground(i == tab ? UI.ripple(UI.rect(UI.col(a, R.color.primary), 8), false, 8) : null);
+        }
+    }
+
+    private LinearLayout buildExamPanel() {
+        LinearLayout panel = new LinearLayout(a);
+        panel.setGravity(Gravity.CENTER);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        examTime = UI.tv(a, "00:00", 48, UI.col(a, R.color.text), true);
+        examTime.setGravity(Gravity.CENTER);
+        panel.addView(examTime);
+        examMinutes = new EditText(a);
+        examMinutes.setInputType(InputType.TYPE_CLASS_NUMBER);
+        examMinutes.setHint("Exam duration in minutes");
+        examMinutes.setText(String.valueOf(a.getSharedPreferences("exam", 0).getInt("minutes", 60)));
+        examMinutes.setGravity(Gravity.CENTER);
+        panel.addView(examMinutes, new LinearLayout.LayoutParams(UI.dp(220), UI.W));
+        TextView action = UI.tv(a, "Start / pause exam", 15, UI.col(a, R.color.primary), true);
+        action.setGravity(Gravity.CENTER);
+        action.setPadding(UI.dp(16), UI.dp(12), UI.dp(16), UI.dp(12));
+        action.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { toggleExam(); }
+        });
+        panel.addView(action);
+        return panel;
+    }
+
+    private void toggleExam() {
+        android.content.SharedPreferences prefs = a.getSharedPreferences("exam", 0);
+        long end = prefs.getLong("end", 0);
+        boolean running = prefs.getBoolean("running", false);
+        if (running) {
+            prefs.edit().putLong("remaining", Math.max(0, end - System.currentTimeMillis())).putBoolean("running", false).apply();
+            ExamTimer.cancel(a);
+        } else {
+            int minutes;
+            try { minutes = Math.max(1, Math.min(600, Integer.parseInt(examMinutes.getText().toString()))); }
+            catch (Exception ignored) { minutes = 60; }
+            long left = prefs.getLong("remaining", minutes * 60000L);
+            if (left <= 0) left = minutes * 60000L;
+                long endAt = System.currentTimeMillis() + left;
+                prefs.edit().putInt("minutes", minutes).putLong("end", endAt)
+                    .putBoolean("running", true).apply();
+                ExamTimer.schedule(a, endAt);
+        }
+        updateExam();
+    }
+
+    private void updateExam() {
+        android.content.SharedPreferences prefs = a.getSharedPreferences("exam", 0);
+        long remaining = prefs.getBoolean("running", false)
+                ? Math.max(0, prefs.getLong("end", 0) - System.currentTimeMillis())
+                : prefs.getLong("remaining", prefs.getInt("minutes", 60) * 60000L);
+        if (prefs.getBoolean("running", false) && remaining == 0) {
+            prefs.edit().putBoolean("running", false).putLong("remaining", 0).apply();
+        }
+        examTime.setText(UI.mmss(remaining));
+    }
+
+    private View quickButton(int icon, String label, final Runnable action) {
+        ImageView button = UI.ib(a, icon, UI.col(a, R.color.text2), 44, 11);
+        button.setContentDescription(label);
+        button.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { action.run(); } });
+        return button;
+    }
+
+    private void openSystemApp(String category, String fallbackAction) {
+        PackageManager pm = a.getPackageManager();
+        Intent launch = new Intent(Intent.ACTION_MAIN).addCategory(category);
+        ResolveInfo result = pm.resolveActivity(launch, 0);
+        if (result != null) {
+            launch.setClassName(result.activityInfo.packageName, result.activityInfo.name);
+            try { a.startActivity(launch); return; } catch (Exception ignored) { }
+        }
+        if (fallbackAction != null && fallbackAction.startsWith("android.intent")) {
+            try { a.startActivity(new Intent(fallbackAction)); return; } catch (Exception ignored) { }
+        }
+        if (fallbackAction != null && fallbackAction.startsWith("content:")) {
+            try { a.startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(fallbackAction))); return; } catch (Exception ignored) { }
+        }
+        a.toast(labelFor(category) + " app not found");
+    }
+
+    private String labelFor(String category) {
+        return category.equals(Intent.CATEGORY_APP_CLOCK) ? "Clock"
+                : category.equals(Intent.CATEGORY_APP_CALCULATOR) ? "Calculator" : "Calendar";
+    }
+
+    private void chooseShortcut() {
+        final PackageManager pm = a.getPackageManager();
+        Intent query = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        final List<ResolveInfo> apps = pm.queryIntentActivities(query, 0);
+        java.util.Collections.sort(apps, new ResolveInfo.DisplayNameComparator(pm));
+        final String[] labels = new String[apps.size()];
+        for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i).loadLabel(pm).toString();
+        new AlertDialog.Builder(a).setTitle("Add app shortcut").setItems(labels, new DialogInterface.OnClickListener() {
+            @Override public void onClick(DialogInterface dialog, int which) {
+                String pkg = apps.get(which).activityInfo.packageName;
+                android.content.SharedPreferences p = a.getSharedPreferences("shortcuts", 0);
+                java.util.Set<String> items = new java.util.HashSet<>(p.getStringSet("packages", java.util.Collections.<String>emptySet()));
+                items.add(pkg);
+                p.edit().putStringSet("packages", items).apply();
+                renderShortcuts();
+            }
+        }).show();
+    }
+
+    private void renderShortcuts() {
+        if (shortcutRow == null) return;
+        while (shortcutRow.getChildCount() > 5) shortcutRow.removeViewAt(4);
+        android.content.SharedPreferences p = a.getSharedPreferences("shortcuts", 0);
+        java.util.ArrayList<String> packages = new java.util.ArrayList<>(
+            p.getStringSet("packages", java.util.Collections.<String>emptySet()));
+        java.util.Collections.sort(packages);
+        for (String pkg : packages) {
+            try {
+                ApplicationInfo info = a.getPackageManager().getApplicationInfo(pkg, 0);
+                ImageView icon = new ImageView(a);
+                icon.setImageDrawable(a.getPackageManager().getApplicationIcon(info));
+                icon.setPadding(UI.dp(10), UI.dp(10), UI.dp(10), UI.dp(10));
+                icon.setContentDescription(a.getPackageManager().getApplicationLabel(info));
+                icon.setOnClickListener(v -> {
+                    Intent launch = a.getPackageManager().getLaunchIntentForPackage(pkg);
+                    if (launch != null) a.startActivity(launch);
+                });
+                shortcutRow.addView(icon, 4, new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48)));
+            } catch (PackageManager.NameNotFoundException ignored) { }
+        }
+    }
+
     /** Re-reads the "continue reading" card. */
     @Override public void refresh() {
         pdfCard.removeAllViews();
@@ -145,6 +359,12 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     }
 
     private void update() {
+        if (dateText != null) {
+            Date now = new Date();
+            clockText.setText(DateFormat.getTimeFormat(a).format(now));
+            dateText.setText(new SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(now));
+            updateExam();
+        }
         boolean run = Pomo.running();
         long left = Pomo.left(), total = Pomo.total();
         if (run && left <= 0) { Pomo.finish(); return; }
@@ -152,7 +372,7 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         int color = UI.col(a, ph == Pomo.FOCUS ? R.color.primary : R.color.green);
         tv.set(total > 0 ? (float) left / total : 0f, UI.mmss(left), Pomo.phaseName(ph), Pomo.done(), Pomo.every(), color);
         play.setImageResource(run ? R.drawable.ic_pause : R.drawable.ic_play);
-        setKeepScreenOn(run && Pomo.awake());
+        setKeepScreenOn(false);
     }
 
     @Override protected void onAttachedToWindow() {
@@ -168,68 +388,4 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         super.onDetachedFromWindow();
     }
 
-    // ---------- settings dialog ----------
-    private EditText num(int v) {
-        EditText e = new EditText(a);
-        e.setInputType(InputType.TYPE_CLASS_NUMBER);
-        e.setText(String.valueOf(v));
-        e.setGravity(Gravity.END);
-        e.setMinWidth(UI.dp(64));
-        e.setSelectAllOnFocus(true);
-        e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(3)});
-        return e;
-    }
-
-    private void addRow(LinearLayout l, String label, View v) {
-        LinearLayout r = new LinearLayout(a);
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.addView(UI.tv(a, label, 16, UI.col(a, R.color.text), false), new LinearLayout.LayoutParams(0, UI.W, 1f));
-        r.addView(v, new LinearLayout.LayoutParams(UI.W, UI.W));
-        l.addView(r, new LinearLayout.LayoutParams(UI.M, UI.W));
-    }
-
-    private Switch sw(LinearLayout l, String label, boolean on) {
-        Switch s = new Switch(a);
-        s.setText(label);
-        s.setTextSize(16);
-        s.setChecked(on);
-        s.setPadding(0, UI.dp(10), 0, UI.dp(10));
-        l.addView(s, new LinearLayout.LayoutParams(UI.M, UI.W));
-        return s;
-    }
-
-    private static int val(EditText e, int def, int lo, int hi) {
-        try {
-            return Math.max(lo, Math.min(hi, Integer.parseInt(e.getText().toString().trim())));
-        } catch (Exception x) {
-            return def;
-        }
-    }
-
-    private void showSettings() {
-        LinearLayout l = new LinearLayout(a);
-        l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(UI.dp(24), UI.dp(8), UI.dp(24), UI.dp(8));
-        final EditText f = num(Pomo.focusMin()), s = num(Pomo.shortMin()), lo = num(Pomo.longMin()), ev = num(Pomo.every());
-        addRow(l, "Focus (min)", f);
-        addRow(l, "Short break (min)", s);
-        addRow(l, "Long break (min)", lo);
-        addRow(l, "Sessions before long break", ev);
-        final Switch auto = sw(l, "Auto-start next phase", Pomo.auto());
-        final Switch pull = sw(l, "Pull me out of other apps when time is up", Pomo.pull());
-        final Switch awake = sw(l, "Keep screen on while running", Pomo.awake());
-        ScrollView sv = new ScrollView(a);
-        sv.addView(l);
-        new AlertDialog.Builder(a)
-                .setTitle("Timer settings")
-                .setView(sv)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        Pomo.saveSettings(val(f, 25, 1, 180), val(s, 5, 1, 180), val(lo, 15, 1, 180), val(ev, 4, 1, 12),
-                                auto.isChecked(), pull.isChecked(), awake.isChecked());
-                        if (pull.isChecked()) a.ensureOverlay();
-                    }
-                }).show();
-    }
 }
