@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#121212</color>
+    <color name="surface">#1E1E1E</color>
+    <color name="text">#EEEEEE</color>
+    <color name="text2">#A0A0A0</color>
+    <color name="primary">#EF5350</color>
+    <color name="primary_dark">#B71C1C</color>
+    <color name="green">#66BB6A</color>
+    <color name="divider">#333333</color>
+</resources>
