@@ -56,8 +56,8 @@ final class PdfCovers {
         } catch (Exception ignored) {
             return null;
         } finally {
-            if (page != null) page.close();
-            if (renderer != null) renderer.close();
+            if (page != null) try { page.close(); } catch (Exception ignored) { }
+            if (renderer != null) try { renderer.close(); } catch (Exception ignored) { }
             if (descriptor != null) try { descriptor.close(); } catch (Exception ignored) { }
         }
     }

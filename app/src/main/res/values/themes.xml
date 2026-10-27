@@ -1,10 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="android:colorPrimary">@color/primary</item>
         <item name="android:colorPrimaryDark">@color/primary_dark</item>
         <item name="android:colorAccent">@color/primary</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorSecondary">@color/green</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@color/primary_dark</item>
+    </style>
+    <style name="AppTheme.Dark" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:colorPrimary">#8FD3C7</item>
+        <item name="android:colorPrimaryDark">#315D57</item>
+        <item name="android:colorAccent">#8FD3C7</item>
+        <item name="colorPrimary">#8FD3C7</item>
+        <item name="colorPrimaryVariant">#315D57</item>
+        <item name="colorSecondary">#A8C87A</item>
+        <item name="android:windowBackground">#101416</item>
+        <item name="android:statusBarColor">#101416</item>
     </style>
 </resources>

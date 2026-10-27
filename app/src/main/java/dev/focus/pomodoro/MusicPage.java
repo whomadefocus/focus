@@ -53,14 +53,15 @@ final class MusicPage extends LinearLayout implements MainActivity.Refresh {
             @Override void bind(View v, final Player.Track t) {
                 Object[] o = (Object[]) v.getTag();
                 TextView title = (TextView) o[0], sub = (TextView) o[1];
-                ImageView icon = (ImageView) o[2], art = (ImageView) o[3];
+                MaterialIconView icon = (MaterialIconView) o[2];
+                ImageView art = (ImageView) o[3];
                 boolean cur = Player.isCurrent(t);
                 int color = UI.col(a, cur ? R.color.primary : R.color.text);
                 title.setText(t.title);
                 title.setTextColor(color);
                 sub.setText(t.sub);
                 icon.setImageResource(t.noise ? R.drawable.ic_noise : (cur && Player.playing ? R.drawable.ic_pause : R.drawable.ic_play));
-                icon.setColorFilter(cur ? UI.col(a, R.color.primary) : UI.col(a, R.color.text2));
+                icon.setTint(cur ? UI.col(a, R.color.primary) : UI.col(a, R.color.text2));
                 if (t.noise) {
                     art.setImageResource(R.drawable.ic_noise);
                     art.setTag(null);
@@ -87,7 +88,7 @@ final class MusicPage extends LinearLayout implements MainActivity.Refresh {
         r.setPadding(UI.dp(16), UI.dp(10), UI.dp(16), UI.dp(10));
         r.setBackground(UI.ripple(null, false, 0));
         r.setLayoutParams(new RecyclerView.LayoutParams(UI.M, UI.W));
-        ImageView icon = new ImageView(c);
+        MaterialIconView icon = new MaterialIconView(c);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         ImageView art = new ImageView(c);
         art.setScaleType(ImageView.ScaleType.CENTER_CROP);

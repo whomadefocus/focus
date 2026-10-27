@@ -9,8 +9,9 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.Switch;
 import android.widget.TextView;
+
+import com.google.android.material.switchmaterial.SwitchMaterial;
 
 /** Full-page settings for timer, reader, and app behavior. */
 final class SettingsPage extends LinearLayout {
@@ -32,6 +33,14 @@ final class SettingsPage extends LinearLayout {
         scroll.addView(content);
         addView(scroll, new LinearLayout.LayoutParams(UI.M, 0, 1f));
 
+        section(content, "APPEARANCE");
+        final SwitchMaterial dark = toggle("Dark mode", UI.dark());
+        content.addView(dark);
+        dark.setOnCheckedChangeListener((button, enabled) -> {
+            a.getSharedPreferences("appearance", Context.MODE_PRIVATE).edit().putBoolean("dark", enabled).apply();
+            a.recreate();
+        });
+
         section(content, "POMODORO");
         final EditText focus = number(Pomo.focusMin());
         final EditText shortBreak = number(Pomo.shortMin());
@@ -41,13 +50,13 @@ final class SettingsPage extends LinearLayout {
         row(content, "Short break (minutes)", shortBreak);
         row(content, "Long break (minutes)", longBreak);
         row(content, "Sessions before long break", every);
-        final Switch auto = toggle("Auto-start next phase", Pomo.auto());
-        final Switch pull = toggle("Open Focus when a timer ends", Pomo.pull());
+        final SwitchMaterial auto = toggle("Auto-start next phase", Pomo.auto());
+        final SwitchMaterial pull = toggle("Open Focus when a timer ends", Pomo.pull());
         content.addView(auto);
         content.addView(pull);
 
         section(content, "PDF READER");
-        final Switch keepScreen = toggle("Keep screen on while reading", pdfKeepScreen(a));
+        final SwitchMaterial keepScreen = toggle("Keep screen on while reading", pdfKeepScreen(a));
         content.addView(keepScreen);
         keepScreen.setOnCheckedChangeListener((button, checked) -> a.getSharedPreferences("reader", Context.MODE_PRIVATE)
                 .edit().putBoolean("keep_screen", checked).apply());
@@ -110,8 +119,8 @@ final class SettingsPage extends LinearLayout {
         parent.addView(line, new LinearLayout.LayoutParams(UI.M, UI.W));
     }
 
-    private Switch toggle(String title, boolean checked) {
-        Switch control = new Switch(a);
+    private SwitchMaterial toggle(String title, boolean checked) {
+        SwitchMaterial control = new SwitchMaterial(a);
         control.setText(title);
         control.setTextSize(16);
         control.setChecked(checked);

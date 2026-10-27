@@ -30,6 +30,7 @@ import android.util.LruCache;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.appcompat.widget.AppCompatImageView;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,6 +75,7 @@ public class PdfActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        UI.applyTheme(this);
         UI.init(this);
         Pomo.init(this);
         PdfLib.init(this);
@@ -401,7 +403,7 @@ public class PdfActivity extends Activity {
 
     private String bitmapKey(int page, int width) { return page + "@" + width; }
 
-    private static final class PageImage extends ImageView {
+    private static final class PageImage extends AppCompatImageView {
         final Matrix transform = new Matrix();
         Bitmap bitmap;
         float zoom = 1f;

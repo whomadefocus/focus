@@ -15,11 +15,14 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
+import android.widget.CheckBox;
+import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import com.google.android.material.tabs.TabLayout;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -32,11 +35,13 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     private TimerView tv;
     private ImageView play;
     private LinearLayout pdfCard;
-    private LinearLayout datePanel, timerPanel, examPanel, shortcutRow;
-    private TextView dateText, clockText, examTime;
-    private final TextView[] tabViews = new TextView[3];
+    private LinearLayout datePanel, timerPanel, examPanel, todayTasks;
+    private GridLayout shortcutsGrid;
+    private TextView dateText, clockText;
+    private TimerView examTimerView;
+    private ImageView examPlay;
     private EditText examMinutes;
-    private int selectedTab = 1;
+    private int selectedTab = 0;
 
     private final Runnable onState = new Runnable() { @Override public void run() { update(); } };
     private final Runnable tick = new Runnable() {
@@ -68,12 +73,20 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         head.addView(gear, new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48)));
         col.addView(head, new LinearLayout.LayoutParams(UI.M, UI.W));
 
-        LinearLayout tabs = new LinearLayout(a);
-        tabs.setGravity(Gravity.CENTER);
-        tabs.setBackground(UI.rect(surface, 10));
-        tabs.addView(tab("Clock & date", 1), new LinearLayout.LayoutParams(0, UI.dp(44), 1f));
-        tabs.addView(tab("Pomodoro", 0), new LinearLayout.LayoutParams(0, UI.dp(44), 1f));
-        tabs.addView(tab("Exam timer", 2), new LinearLayout.LayoutParams(0, UI.dp(44), 1f));
+        TabLayout tabs = new TabLayout(a);
+        tabs.setTabMode(TabLayout.MODE_FIXED);
+        tabs.setTabGravity(TabLayout.GRAVITY_FILL);
+        tabs.setBackgroundColor(surface);
+        tabs.setSelectedTabIndicatorColor(primary);
+        tabs.setTabTextColors(muted, primary);
+        tabs.addTab(tabs.newTab().setText("Clock & date"));
+        tabs.addTab(tabs.newTab().setText("Pomodoro"));
+        tabs.addTab(tabs.newTab().setText("Exam timer"));
+        tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override public void onTabSelected(TabLayout.Tab tab) { setTab(tab.getPosition()); }
+            @Override public void onTabUnselected(TabLayout.Tab tab) { }
+            @Override public void onTabReselected(TabLayout.Tab tab) { }
+        });
         LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(UI.M, UI.W);
         tabLp.topMargin = UI.dp(12);
         col.addView(tabs, tabLp);
@@ -81,13 +94,13 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         datePanel = new LinearLayout(a);
         datePanel.setOrientation(LinearLayout.VERTICAL);
         datePanel.setGravity(Gravity.CENTER);
-        dateText = UI.tv(a, "", 18, muted, false);
+        dateText = UI.tv(a, "", 17, muted, false);
         dateText.setGravity(Gravity.CENTER);
-        clockText = UI.tv(a, "", 56, text, true);
+        clockText = UI.tv(a, "", 58, text, true);
         clockText.setGravity(Gravity.CENTER);
         datePanel.addView(clockText, new LinearLayout.LayoutParams(UI.M, UI.W));
         datePanel.addView(dateText, new LinearLayout.LayoutParams(UI.M, UI.W));
-        col.addView(datePanel, new LinearLayout.LayoutParams(UI.M, UI.dp(260)));
+        col.addView(datePanel, new LinearLayout.LayoutParams(UI.M, UI.dp(250)));
 
         // timer
         timerPanel = new LinearLayout(a);
@@ -119,44 +132,32 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         col.addView(timerPanel, new LinearLayout.LayoutParams(UI.M, UI.W));
 
         examPanel = buildExamPanel();
-        col.addView(examPanel, new LinearLayout.LayoutParams(UI.M, UI.dp(260)));
+        col.addView(examPanel, new LinearLayout.LayoutParams(UI.M, UI.W));
         setTab(selectedTab);
 
-        // three round buttons
-        LinearLayout nav = new LinearLayout(a);
-        nav.setGravity(Gravity.CENTER);
-        nav.addView(navButton(R.drawable.ic_notes, "Notes", MainActivity.NOTES));
-        nav.addView(navButton(R.drawable.ic_music, "Music", MainActivity.MUSIC));
-        nav.addView(navButton(R.drawable.ic_pdf, "PDFs", MainActivity.PDFS));
-        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(UI.M, UI.W);
-        nlp.topMargin = UI.dp(28);
-        col.addView(nav, nlp);
-
-        shortcutRow = new LinearLayout(a);
-        shortcutRow.setGravity(Gravity.CENTER);
-        shortcutRow.addView(quickButton(android.R.drawable.ic_lock_idle_alarm, "Clock", new Runnable() {
-            @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CLOCK, AlarmClock.ACTION_SHOW_ALARMS); }
-        }));
-        shortcutRow.addView(quickButton(android.R.drawable.ic_menu_manage, "Calculator", new Runnable() {
-            @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALCULATOR, null); }
-        }));
-        shortcutRow.addView(quickButton(android.R.drawable.ic_menu_my_calendar, "Calendar", new Runnable() {
-            @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALENDAR, null); }
-        }));
-        shortcutRow.addView(quickButton(android.R.drawable.ic_menu_sort_by_size, "All apps", new Runnable() {
-            @Override public void run() { a.show(MainActivity.APP_DRAWER); }
-        }));
-        ImageView addShortcut = UI.circle(a, R.drawable.ic_add, 48, surface, primary, 24);
-        addShortcut.setContentDescription("Add app shortcut");
-        addShortcut.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { chooseShortcut(); } });
-        shortcutRow.addView(addShortcut, new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48)));
-        HorizontalScrollView shortcutScroll = new HorizontalScrollView(a);
-        shortcutScroll.setHorizontalScrollBarEnabled(false);
-        shortcutScroll.addView(shortcutRow, new HorizontalScrollView.LayoutParams(UI.W, UI.M));
-        LinearLayout.LayoutParams shortcutLp = new LinearLayout.LayoutParams(UI.M, UI.dp(64));
-        shortcutLp.topMargin = UI.dp(12);
-        col.addView(shortcutScroll, shortcutLp);
+        addSectionTitle(col, "Shortcuts", "add", new Runnable() { @Override public void run() { chooseShortcut(); } });
+        shortcutsGrid = new GridLayout(a);
+        shortcutsGrid.setColumnCount(3);
+        shortcutsGrid.setAlignmentMode(GridLayout.ALIGN_BOUNDS);
+        addGridTile("description", "Notes", new Runnable() { @Override public void run() { a.show(MainActivity.NOTES); } });
+        addGridTile("music_note", "Music", new Runnable() { @Override public void run() { a.show(MainActivity.MUSIC); } });
+        addGridTile("picture_as_pdf", "PDFs", new Runnable() { @Override public void run() { a.show(MainActivity.PDFS); } });
+        addGridTile("alarm", "Clock", new Runnable() { @Override public void run() { openSystemApp("android.intent.category.APP_ALARM", AlarmClock.ACTION_SHOW_ALARMS); } });
+        addGridTile("calculate", "Calculator", new Runnable() { @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALCULATOR, null); } });
+        addGridTile("calendar_month", "Calendar", new Runnable() { @Override public void run() { openSystemApp(Intent.CATEGORY_APP_CALENDAR, null); } });
+        addGridTile("apps", "All apps", new Runnable() { @Override public void run() { a.show(MainActivity.APP_DRAWER); } });
+        addGridTile("add", "Add shortcut", new Runnable() { @Override public void run() { chooseShortcut(); } });
         renderShortcuts();
+        LinearLayout.LayoutParams gridLp = new LinearLayout.LayoutParams(UI.M, UI.W);
+        gridLp.topMargin = UI.dp(2);
+        col.addView(shortcutsGrid, gridLp);
+
+        addSectionTitle(col, "Today's tasks", "edit_note", new Runnable() { @Override public void run() { a.show(MainActivity.NOTES); } });
+        todayTasks = new LinearLayout(a);
+        todayTasks.setOrientation(LinearLayout.VERTICAL);
+        todayTasks.setPadding(UI.dp(12), UI.dp(6), UI.dp(12), UI.dp(6));
+        todayTasks.setBackground(UI.rect(surface, 10));
+        col.addView(todayTasks, new LinearLayout.LayoutParams(UI.M, UI.W));
 
         // last pdf
         pdfCard = new LinearLayout(a);
@@ -176,62 +177,153 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         refresh();
     }
 
-    private View navButton(int icon, String label, final int target) {
-        LinearLayout c = new LinearLayout(a);
-        c.setOrientation(LinearLayout.VERTICAL);
-        c.setGravity(Gravity.CENTER_HORIZONTAL);
-        ImageView b = UI.circle(a, icon, 64, UI.col(a, R.color.surface), UI.col(a, R.color.primary), 28);
-        b.setContentDescription(label);
-        b.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { a.show(target); } });
-        c.addView(b, new LinearLayout.LayoutParams(UI.dp(64), UI.dp(64)));
-        TextView t = UI.tv(a, label, 12, UI.col(a, R.color.text2), false);
-        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(UI.W, UI.W);
-        tl.topMargin = UI.dp(6);
-        c.addView(t, tl);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UI.dp(88), UI.W);
-        c.setLayoutParams(lp);
-        return c;
-    }
-
-    private View tab(final String label, final int tab) {
-        TextView view = UI.tv(a, label, 13, UI.col(a, R.color.text2), true);
-        view.setGravity(Gravity.CENTER);
-        tabViews[tab] = view;
-        view.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { setTab(tab); } });
-        return view;
-    }
-
     private void setTab(int tab) {
         selectedTab = tab;
-        datePanel.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
-        timerPanel.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
+        datePanel.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
+        timerPanel.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
         examPanel.setVisibility(tab == 2 ? View.VISIBLE : View.GONE);
-        for (int i = 0; i < tabViews.length; i++) {
-            tabViews[i].setTextColor(UI.col(a, i == tab ? R.color.surface : R.color.text2));
-            tabViews[i].setBackground(i == tab ? UI.ripple(UI.rect(UI.col(a, R.color.primary), 8), false, 8) : null);
+    }
+
+    private void addSectionTitle(LinearLayout parent, String title, String actionIcon, final Runnable action) {
+        LinearLayout row = new LinearLayout(a);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = UI.tv(a, title, 18, UI.col(a, R.color.text), true);
+        row.addView(label, new LinearLayout.LayoutParams(0, UI.dp(48), 1f));
+        TextView button = UI.symbolButton(a, actionIcon, UI.col(a, R.color.primary), 44, 24);
+        button.setContentDescription(title.equals("Shortcuts") ? "Add app shortcut" : "Open notes and tasks");
+        button.setOnClickListener(v -> action.run());
+        row.addView(button);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UI.M, UI.W);
+        lp.topMargin = UI.dp(16);
+        parent.addView(row, lp);
+    }
+
+    private void addGridTile(String iconName, String label, final Runnable action) {
+        LinearLayout tile = new LinearLayout(a);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setBackground(UI.ripple(UI.rect(UI.col(a, R.color.surface), 10), false, 10));
+        tile.addView(UI.symbol(a, iconName, 27, UI.col(a, R.color.primary)),
+                new LinearLayout.LayoutParams(UI.M, UI.dp(34)));
+        TextView text = UI.tv(a, label, 12, UI.col(a, R.color.text), true);
+        text.setGravity(Gravity.CENTER);
+        text.setSingleLine(true);
+        text.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(UI.M, UI.W);
+        textLp.topMargin = UI.dp(4);
+        tile.addView(text, textLp);
+        tile.setContentDescription(label);
+        tile.setOnClickListener(v -> action.run());
+        addGridChild(tile);
+    }
+
+    private void addAppGridTile(final String pkg) {
+        try {
+            final ApplicationInfo info = a.getPackageManager().getApplicationInfo(pkg, 0);
+            LinearLayout tile = new LinearLayout(a);
+            tile.setOrientation(LinearLayout.VERTICAL);
+            tile.setGravity(Gravity.CENTER);
+            tile.setBackground(UI.ripple(UI.rect(UI.col(a, R.color.surface), 10), false, 10));
+            ImageView icon = new ImageView(a);
+            icon.setImageDrawable(a.getPackageManager().getApplicationIcon(info));
+            tile.addView(icon, new LinearLayout.LayoutParams(UI.dp(32), UI.dp(32)));
+            TextView label = UI.tv(a, a.getPackageManager().getApplicationLabel(info), 12, UI.col(a, R.color.text), true);
+            label.setGravity(Gravity.CENTER);
+            label.setSingleLine(true);
+            label.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(UI.M, UI.W);
+            labelLp.topMargin = UI.dp(4);
+            tile.addView(label, labelLp);
+            tile.setOnClickListener(v -> {
+                Intent launch = a.getPackageManager().getLaunchIntentForPackage(pkg);
+                if (launch != null) a.startActivity(launch);
+            });
+            tile.setOnLongClickListener(v -> {
+                android.content.SharedPreferences prefs = a.getSharedPreferences("shortcuts", 0);
+                java.util.Set<String> items = new java.util.HashSet<>(prefs.getStringSet("packages", java.util.Collections.<String>emptySet()));
+                items.remove(pkg);
+                prefs.edit().putStringSet("packages", items).apply();
+                renderShortcuts();
+                return true;
+            });
+            addGridChild(tile);
+        } catch (PackageManager.NameNotFoundException ignored) { }
+    }
+
+    private void addGridChild(View tile) {
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+        lp.width = 0;
+        lp.height = UI.dp(88);
+        lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+        lp.setMargins(UI.dp(4), UI.dp(4), UI.dp(4), UI.dp(4));
+        shortcutsGrid.addView(tile, lp);
+    }
+
+    private void renderTodayTasks() {
+        todayTasks.removeAllViews();
+        List<TaskStore.Task> tasks = TaskStore.forDay(a, Notes.today());
+        if (tasks.isEmpty()) {
+            TextView empty = UI.tv(a, "No tasks planned for today", 14, UI.col(a, R.color.text2), false);
+            empty.setPadding(UI.dp(4), UI.dp(10), UI.dp(4), UI.dp(10));
+            todayTasks.addView(empty);
+            return;
+        }
+        int completed = 0;
+        for (TaskStore.Task task : tasks) if (task.done) completed++;
+        TextView progress = UI.tv(a, completed + " of " + tasks.size() + " completed", 12, UI.col(a, R.color.text2), false);
+        progress.setPadding(UI.dp(4), UI.dp(4), UI.dp(4), UI.dp(6));
+        todayTasks.addView(progress);
+        for (final TaskStore.Task task : tasks) {
+            CheckBox check = new CheckBox(a);
+            check.setText(task.title);
+            check.setTextColor(UI.col(a, R.color.text));
+            check.setTextSize(14);
+            check.setChecked(task.done);
+            check.setOnCheckedChangeListener((button, checked) -> {
+                task.done = checked;
+                TaskStore.update(a, task);
+                renderTodayTasks();
+            });
+            todayTasks.addView(check, new LinearLayout.LayoutParams(UI.M, UI.W));
         }
     }
 
     private LinearLayout buildExamPanel() {
         LinearLayout panel = new LinearLayout(a);
-        panel.setGravity(Gravity.CENTER);
         panel.setOrientation(LinearLayout.VERTICAL);
-        examTime = UI.tv(a, "00:00", 48, UI.col(a, R.color.text), true);
-        examTime.setGravity(Gravity.CENTER);
-        panel.addView(examTime);
+        examTimerView = new TimerView(a);
+        LinearLayout.LayoutParams timerLp = new LinearLayout.LayoutParams(UI.W, UI.W);
+        timerLp.gravity = Gravity.CENTER_HORIZONTAL;
+        panel.addView(examTimerView, timerLp);
+        LinearLayout durationRow = new LinearLayout(a);
+        durationRow.setGravity(Gravity.CENTER);
+        durationRow.addView(UI.tv(a, "Exam length", 14, UI.col(a, R.color.text2), false));
         examMinutes = new EditText(a);
         examMinutes.setInputType(InputType.TYPE_CLASS_NUMBER);
-        examMinutes.setHint("Exam duration in minutes");
-        examMinutes.setText(String.valueOf(a.getSharedPreferences("exam", 0).getInt("minutes", 60)));
+        examMinutes.setHint("30");
+        examMinutes.setSelectAllOnFocus(true);
+        examMinutes.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(3)});
+        examMinutes.setText(String.valueOf(a.getSharedPreferences("exam", 0).getInt("minutes", 30)));
         examMinutes.setGravity(Gravity.CENTER);
-        panel.addView(examMinutes, new LinearLayout.LayoutParams(UI.dp(220), UI.W));
-        TextView action = UI.tv(a, "Start / pause exam", 15, UI.col(a, R.color.primary), true);
-        action.setGravity(Gravity.CENTER);
-        action.setPadding(UI.dp(16), UI.dp(12), UI.dp(16), UI.dp(12));
-        action.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { toggleExam(); }
-        });
-        panel.addView(action);
+        LinearLayout.LayoutParams minutesLp = new LinearLayout.LayoutParams(UI.dp(76), UI.dp(52));
+        minutesLp.leftMargin = UI.dp(12);
+        durationRow.addView(examMinutes, minutesLp);
+        durationRow.addView(UI.tv(a, "min", 14, UI.col(a, R.color.text2), false));
+        panel.addView(durationRow);
+        LinearLayout controls = new LinearLayout(a);
+        controls.setGravity(Gravity.CENTER);
+        ImageView reset = UI.circle(a, R.drawable.ic_reset, 48, UI.col(a, R.color.surface), UI.col(a, R.color.text2), 24);
+        reset.setContentDescription("Reset exam timer");
+        reset.setOnClickListener(v -> resetExam());
+        examPlay = UI.circle(a, R.drawable.ic_play, 72, UI.col(a, R.color.primary), Color.WHITE, 36);
+        examPlay.setContentDescription("Start or pause exam timer");
+        examPlay.setOnClickListener(v -> toggleExam());
+        LinearLayout.LayoutParams resetLp = new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48));
+        resetLp.setMargins(UI.dp(24), UI.dp(12), UI.dp(24), UI.dp(12));
+        controls.addView(reset, resetLp);
+        controls.addView(examPlay, new LinearLayout.LayoutParams(UI.dp(72), UI.dp(72)));
+        panel.addView(controls);
+        updateExam();
         return panel;
     }
 
@@ -245,33 +337,43 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
         } else {
             int minutes;
             try { minutes = Math.max(1, Math.min(600, Integer.parseInt(examMinutes.getText().toString()))); }
-            catch (Exception ignored) { minutes = 60; }
-            long left = prefs.getLong("remaining", minutes * 60000L);
-            if (left <= 0) left = minutes * 60000L;
+            catch (Exception ignored) { minutes = 30; }
+                long left = prefs.getLong("remaining", 0);
+                if (left <= 0 || minutes != prefs.getInt("minutes", 60)) left = minutes * 60000L;
                 long endAt = System.currentTimeMillis() + left;
-                prefs.edit().putInt("minutes", minutes).putLong("end", endAt)
+                prefs.edit().putInt("minutes", minutes).putLong("remaining", left).putLong("end", endAt)
                     .putBoolean("running", true).apply();
                 ExamTimer.schedule(a, endAt);
         }
         updateExam();
     }
 
+            private void resetExam() {
+            int minutes;
+            try { minutes = Math.max(1, Math.min(600, Integer.parseInt(examMinutes.getText().toString()))); }
+            catch (Exception ignored) { minutes = 30; }
+            ExamTimer.cancel(a);
+            a.getSharedPreferences("exam", 0).edit().putInt("minutes", minutes)
+                .putLong("remaining", minutes * 60000L).putBoolean("running", false).apply();
+            updateExam();
+            }
+
     private void updateExam() {
         android.content.SharedPreferences prefs = a.getSharedPreferences("exam", 0);
         long remaining = prefs.getBoolean("running", false)
                 ? Math.max(0, prefs.getLong("end", 0) - System.currentTimeMillis())
-                : prefs.getLong("remaining", prefs.getInt("minutes", 60) * 60000L);
-        if (prefs.getBoolean("running", false) && remaining == 0) {
-            prefs.edit().putBoolean("running", false).putLong("remaining", 0).apply();
+                : prefs.getLong("remaining", prefs.getInt("minutes", 30) * 60000L);
+        boolean running = prefs.getBoolean("running", false);
+        if (running && remaining == 0) {
+            ExamReceiver.finish(a);
+            running = false;
         }
-        examTime.setText(UI.mmss(remaining));
-    }
-
-    private View quickButton(int icon, String label, final Runnable action) {
-        ImageView button = UI.ib(a, icon, UI.col(a, R.color.text2), 44, 11);
-        button.setContentDescription(label);
-        button.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { action.run(); } });
-        return button;
+        int minutes = Math.max(1, prefs.getInt("minutes", 30));
+        long total = minutes * 60000L;
+        examTimerView.set(total > 0 ? (float) remaining / total : 0f, UI.mmss(remaining), "Exam", 0, 0,
+                UI.col(a, R.color.primary));
+        if (examPlay != null) examPlay.setImageResource(running ? R.drawable.ic_pause : R.drawable.ic_play);
+        if (examMinutes != null) examMinutes.setEnabled(!running);
     }
 
     private void openSystemApp(String category, String fallbackAction) {
@@ -292,7 +394,7 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     }
 
     private String labelFor(String category) {
-        return category.equals(Intent.CATEGORY_APP_CLOCK) ? "Clock"
+        return category.equals("android.intent.category.APP_ALARM") ? "Clock"
                 : category.equals(Intent.CATEGORY_APP_CALCULATOR) ? "Calculator" : "Calendar";
     }
 
@@ -316,30 +418,18 @@ final class HomePage extends ScrollView implements MainActivity.Refresh {
     }
 
     private void renderShortcuts() {
-        if (shortcutRow == null) return;
-        while (shortcutRow.getChildCount() > 5) shortcutRow.removeViewAt(4);
+        if (shortcutsGrid == null) return;
+        while (shortcutsGrid.getChildCount() > 8) shortcutsGrid.removeViewAt(8);
         android.content.SharedPreferences p = a.getSharedPreferences("shortcuts", 0);
         java.util.ArrayList<String> packages = new java.util.ArrayList<>(
             p.getStringSet("packages", java.util.Collections.<String>emptySet()));
         java.util.Collections.sort(packages);
-        for (String pkg : packages) {
-            try {
-                ApplicationInfo info = a.getPackageManager().getApplicationInfo(pkg, 0);
-                ImageView icon = new ImageView(a);
-                icon.setImageDrawable(a.getPackageManager().getApplicationIcon(info));
-                icon.setPadding(UI.dp(10), UI.dp(10), UI.dp(10), UI.dp(10));
-                icon.setContentDescription(a.getPackageManager().getApplicationLabel(info));
-                icon.setOnClickListener(v -> {
-                    Intent launch = a.getPackageManager().getLaunchIntentForPackage(pkg);
-                    if (launch != null) a.startActivity(launch);
-                });
-                shortcutRow.addView(icon, 4, new LinearLayout.LayoutParams(UI.dp(48), UI.dp(48)));
-            } catch (PackageManager.NameNotFoundException ignored) { }
-        }
+        for (String pkg : packages) addAppGridTile(pkg);
     }
 
     /** Re-reads the "continue reading" card. */
     @Override public void refresh() {
+        renderTodayTasks();
         pdfCard.removeAllViews();
         final PdfLib.Doc d = PdfLib.lastRead();
         if (d == null) { pdfCard.setVisibility(View.GONE); return; }

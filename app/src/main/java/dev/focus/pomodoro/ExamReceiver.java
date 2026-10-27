@@ -12,6 +12,10 @@ public final class ExamReceiver extends BroadcastReceiver {
     private static final String CHANNEL = "exam_timer";
 
     @Override public void onReceive(Context context, Intent intent) {
+                finish(context);
+        }
+
+        static void finish(Context context) {
         android.content.SharedPreferences prefs = context.getSharedPreferences("exam", Context.MODE_PRIVATE);
         if (!prefs.getBoolean("running", false) || prefs.getLong("end", 0) > System.currentTimeMillis()) return;
         prefs.edit().putBoolean("running", false).putLong("remaining", 0).apply();

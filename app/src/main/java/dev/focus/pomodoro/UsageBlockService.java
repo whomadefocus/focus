@@ -1,5 +1,6 @@
 package dev.focus.pomodoro;
 
+import android.annotation.SuppressLint;
 import android.accessibilityservice.AccessibilityService;
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
@@ -35,7 +36,7 @@ public final class UsageBlockService extends AccessibilityService {
     }
 
     private boolean overLimit(String pkg, int limitMinutes, long now) {
-        UsageStatsManager manager = (UsageStatsManager) getSystemService(USAGE_STATS_SERVICE);
+        UsageStatsManager manager = usageStatsManager();
         if (manager == null) return false;
         Calendar start = Calendar.getInstance();
         start.set(Calendar.HOUR_OF_DAY, 0);
@@ -47,6 +48,11 @@ public final class UsageBlockService extends AccessibilityService {
         long used = 0;
         for (UsageStats stat : stats) if (pkg.equals(stat.getPackageName())) used = Math.max(used, stat.getTotalTimeInForeground());
         return used >= limitMinutes * 60000L;
+    }
+
+    @SuppressLint("WrongConstant")
+    private UsageStatsManager usageStatsManager() {
+        return (UsageStatsManager) getSystemService("usagestats");
     }
 
     @Override public void onInterrupt() { }

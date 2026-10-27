@@ -18,13 +18,62 @@ import java.util.Locale;
 final class UI {
     static final int M = -1, W = -2;
     static float D = 1f;
+    private static boolean dark;
+    private static Typeface materialSymbols;
 
-    static void init(Context c) { D = c.getResources().getDisplayMetrics().density; }
+    static void init(Context c) {
+        D = c.getResources().getDisplayMetrics().density;
+        dark = c.getSharedPreferences("appearance", Context.MODE_PRIVATE).getBoolean("dark", false);
+    }
+
+    static boolean dark() { return dark; }
+
+    static void applyTheme(android.app.Activity activity) {
+        if (activity.getSharedPreferences("appearance", Context.MODE_PRIVATE).getBoolean("dark", false)) {
+            activity.setTheme(R.style.AppTheme_Dark);
+        }
+    }
 
     static int dp(float v) { return Math.round(v * D); }
 
     @SuppressWarnings("deprecation")
-    static int col(Context c, int id) { return c.getResources().getColor(id); }
+    static int col(Context c, int id) {
+        if (dark) {
+            if (id == R.color.bg) return 0xFF101416;
+            if (id == R.color.surface) return 0xFF1B2225;
+            if (id == R.color.text) return 0xFFE6ECEE;
+            if (id == R.color.text2) return 0xFF9EAAAE;
+            if (id == R.color.primary) return 0xFF8FD3C7;
+            if (id == R.color.primary_dark) return 0xFF315D57;
+            if (id == R.color.green) return 0xFFA8C87A;
+            if (id == R.color.divider) return 0xFF364044;
+            if (id == R.color.ic_bg) return 0xFF8FD3C7;
+        }
+        return c.getResources().getColor(id);
+    }
+
+    static TextView symbol(Context c, String name, float size, int tint) {
+        TextView icon = tv(c, name, size, tint, false);
+        icon.setTypeface(symbolTypeface(c));
+        if (android.os.Build.VERSION.SDK_INT >= 21) icon.setFontFeatureSettings("'liga'");
+        icon.setGravity(Gravity.CENTER);
+        return icon;
+    }
+
+    static Typeface symbolTypeface(Context context) {
+        if (materialSymbols == null) materialSymbols = Typeface.createFromAsset(
+                context.getAssets(), "fonts/material_symbols_rounded.ttf");
+        return materialSymbols;
+    }
+
+    static TextView symbolButton(Context c, String name, int tint, int sizeDp, float iconSp) {
+        TextView button = symbol(c, name, iconSp, tint);
+        button.setBackground(ripple(null, true, 0));
+        button.setLayoutParams(new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)));
+        button.setClickable(true);
+        button.setFocusable(true);
+        return button;
+    }
 
     static GradientDrawable rect(int fill, float rDp) {
         GradientDrawable g = new GradientDrawable();
@@ -56,9 +105,9 @@ final class UI {
 
     /** Flat icon button with a round ripple. */
     static ImageView ib(Context c, int res, int tint, int sizeDp, int padDp) {
-        ImageView v = new ImageView(c);
+        ImageView v = new MaterialIconView(c);
         v.setImageResource(res);
-        v.setColorFilter(tint);
+        if (v instanceof MaterialIconView) ((MaterialIconView) v).setTint(tint); else v.setColorFilter(tint);
         v.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         v.setPadding(dp(padDp), dp(padDp), dp(padDp), dp(padDp));
         v.setBackground(ripple(null, true, 0));
@@ -68,9 +117,9 @@ final class UI {
 
     /** Filled circular button. */
     static ImageView circle(Context c, int res, int sizeDp, int bg, int tint, int iconDp) {
-        ImageView v = new ImageView(c);
+        ImageView v = new MaterialIconView(c);
         v.setImageResource(res);
-        v.setColorFilter(tint);
+        if (v instanceof MaterialIconView) ((MaterialIconView) v).setTint(tint); else v.setColorFilter(tint);
         v.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         int p = dp((sizeDp - iconDp) / 2f);
         v.setPadding(p, p, p, p);

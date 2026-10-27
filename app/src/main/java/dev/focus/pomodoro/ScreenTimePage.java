@@ -1,5 +1,6 @@
 package dev.focus.pomodoro;
 
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.AppOpsManager;
 import android.app.usage.UsageStats;
@@ -101,7 +102,7 @@ final class ScreenTimePage extends LinearLayout implements MainActivity.Refresh 
                 ((TextView) holder[1]).setText(item.label);
                 ((TextView) holder[2]).setText(format(item.used) + " used today" + (item.limit > 0 ? " · " + item.limit + " min limit" : ""));
                 ((TextView) holder[3]).setText(item.limit > 0 ? "Edit" : "Limit");
-                holder[3].setOnClickListener(new View.OnClickListener() {
+                ((View) holder[3]).setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) { editLimit(item); }
                 });
             }
@@ -136,10 +137,21 @@ final class ScreenTimePage extends LinearLayout implements MainActivity.Refresh 
 
     private boolean hasUsageAccess() {
         try {
+            if (Build.VERSION.SDK_INT < 23) {
+                UsageStatsManager manager = usageStatsManager();
+                List<UsageStats> stats = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY,
+                        System.currentTimeMillis() - 86400000L, System.currentTimeMillis());
+                return stats != null && !stats.isEmpty();
+            }
             AppOpsManager ops = (AppOpsManager) a.getSystemService(Context.APP_OPS_SERVICE);
             return ops != null && ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
                     Process.myUid(), a.getPackageName()) == AppOpsManager.MODE_ALLOWED;
         } catch (Exception ignored) { return false; }
+    }
+
+    @SuppressLint("WrongConstant")
+    private UsageStatsManager usageStatsManager() {
+        return (UsageStatsManager) a.getSystemService("usagestats");
     }
 
     private void editLimit(final AppUse item) {
@@ -168,7 +180,7 @@ final class ScreenTimePage extends LinearLayout implements MainActivity.Refresh 
             start.set(Calendar.MINUTE, 0);
             start.set(Calendar.SECOND, 0);
             start.set(Calendar.MILLISECOND, 0);
-            UsageStatsManager manager = (UsageStatsManager) a.getSystemService(Context.USAGE_STATS_SERVICE);
+            UsageStatsManager manager = usageStatsManager();
             List<UsageStats> stats = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY,
                     start.getTimeInMillis(), System.currentTimeMillis());
             if (stats != null) for (UsageStats stat : stats) usage.put(stat.getPackageName(), stat.getTotalTimeInForeground());

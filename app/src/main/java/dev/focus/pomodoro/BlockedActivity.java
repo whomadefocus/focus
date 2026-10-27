@@ -11,6 +11,7 @@ import android.widget.TextView;
 public final class BlockedActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        UI.applyTheme(this);
         UI.init(this);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);

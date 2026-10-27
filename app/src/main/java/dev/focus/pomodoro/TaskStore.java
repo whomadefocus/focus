@@ -81,6 +81,13 @@ final class TaskStore {
         if (task.done) cancel(context, task.id); else schedule(context, task);
     }
 
+    static synchronized void delete(Context context, long id) {
+        ArrayList<Task> tasks = new ArrayList<>(all(context));
+        for (int i = tasks.size() - 1; i >= 0; i--) if (tasks.get(i).id == id) tasks.remove(i);
+        save(context, tasks);
+        cancel(context, id);
+    }
+
     private static Task find(List<Task> tasks, long id) {
         for (Task task : tasks) if (task.id == id) return task;
         return null;
@@ -107,7 +114,9 @@ final class TaskStore {
         cancel(context, task.id);
         if (task.done || task.remindAt <= System.currentTimeMillis()) return;
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarms != null) alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, task.remindAt, intent(context, task.id));
+        if (alarms == null) return;
+        if (Build.VERSION.SDK_INT >= 23) alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, task.remindAt, intent(context, task.id));
+        else alarms.set(AlarmManager.RTC_WAKEUP, task.remindAt, intent(context, task.id));
     }
 
     private static void cancel(Context context, long id) {

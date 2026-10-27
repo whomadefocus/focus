@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        UI.applyTheme(this);
         UI.init(this);
         Pomo.init(this);
         Player.init(this);
@@ -67,7 +68,7 @@ public class MainActivity extends Activity {
         if (page != null) root.removeView(page);
         cur = id;
         switch (id) {
-            case NOTES: page = new NotesPage(this); break;
+            case NOTES: page = new NotesTasksPage(this); break;
             case MUSIC: page = new MusicPage(this); break;
             case PDFS: page = new PdfPage(this); break;
             case SETTINGS: page = new SettingsPage(this); break;
